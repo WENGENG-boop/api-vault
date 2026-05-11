@@ -463,3 +463,9 @@ docker compose up -d --build
 ```text
 start-api-vault.bat
 ```
+<img width="1052" height="1406" alt="微信图片_20260511204414_26_49" src="https://github.com/user-attachments/assets/f9aedefb-73fe-4e6d-ae76-cf2873004a81" />
+
+
+<img width="1088" height="612" alt="image" src="https://github.com/user-attachments/assets/3f9ca512-e11e-4e63-9c28-4c07931cb01a" />
+
+
