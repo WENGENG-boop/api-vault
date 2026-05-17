@@ -13,7 +13,15 @@
       "Bash(curl -s \"http://127.0.0.1:3210/proxy/d669f3ac-3ffd-4348-85a2-2f4913bb1988/v1/models\" -H \"Authorization: Bearer test\")",
       "Bash(curl -s \"http://127.0.0.1:3210/proxy/d669f3ac-3ffd-4348-85a2-2f4913bb1988/v1/models\")",
       "Bash(npm uninstall *)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:3210/api/state)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:3210/api/state)",
+      "Bash(npx tsc *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :5173)",
+      "Bash(kill -9 21512)",
+      "Bash(taskkill /F /PID 21512)",
+      "Bash(taskkill //F //PID 21512)",
+      "Bash(findstr \":5173\")",
+      "Bash(taskkill //F //PID 11860)"
     ]
   }
 }

@@ -58,13 +58,25 @@ test("builds shared provider-level proxy base URL for OpenAI-compatible provider
 
 test("injects OpenAI-compatible auth header", () => {
   const headers = buildUpstreamHeaders(
-    { authorization: "Bearer old", "content-type": "application/json", host: "local" },
+    {
+      authorization: "Bearer old",
+      "content-type": "application/json",
+      cookie: "sid=secret",
+      host: "local",
+      "proxy-authorization": "Basic secret",
+      "x-provider-api-key": "leaky",
+      "x-client-token": "leaky-token"
+    },
     "openai-compatible",
     "sk-real"
   );
   assert.equal(headers.get("authorization"), "Bearer sk-real");
   assert.equal(headers.get("content-type"), "application/json");
   assert.equal(headers.get("host"), null);
+  assert.equal(headers.get("cookie"), null);
+  assert.equal(headers.get("proxy-authorization"), null);
+  assert.equal(headers.get("x-provider-api-key"), null);
+  assert.equal(headers.get("x-client-token"), null);
 });
 
 test("injects Anthropic-compatible auth header", () => {

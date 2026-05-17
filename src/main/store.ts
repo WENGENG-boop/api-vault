@@ -1,6 +1,6 @@
-﻿import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+﻿import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import type {
   AddKeyInput,
   ApiKeyInput,
@@ -9,7 +9,11 @@ import type {
   AppState,
   BalanceConfig,
   BalanceSnapshot,
+  CloudflaredStatus,
   DashboardTotals,
+  LocalService,
+  LocalServiceProtocol,
+  LocalServiceStatus,
   ProviderInput,
   ProviderSafe,
   ProxyModelRule,
@@ -34,6 +38,7 @@ interface ApiKeyRecord {
   name: string;
   apiKey: EncryptedText;
   queryKey?: EncryptedText;
+  keyHash?: string;
   keyMasked: string;
   createdAt: string;
   lastUsedAt?: string;
@@ -50,6 +55,9 @@ interface ProviderRecord {
   createdAt: string;
   updatedAt: string;
   isLocal?: boolean;
+  status?: LocalServiceStatus;
+  latencyMs?: number;
+  lastCheckedAt?: string;
 }
 
 interface ProxyTokenRecord {
@@ -101,12 +109,46 @@ export interface PublicProxyResolution {
 
 interface PersistedData {
   version: number;
+  storageVersion?: number;
   vault?: VaultHeader;
   providers: ProviderRecord[];
   proxyTokens: ProxyTokenRecord[];
   usageEvents: UsageEvent[];
   usageRollups: UsageRollup[];
   balanceSnapshots: BalanceSnapshot[];
+  localServices: LocalServiceRecord[];
+  cloudflaredPublicUrl?: string;
+}
+
+interface RawPersistedData extends Partial<PersistedData> {
+  providers?: any[];
+  proxyTokens?: any[];
+  localServices?: any[];
+}
+
+interface LocalServiceRecord extends LocalService {
+  apiKey?: EncryptedText;
+}
+
+interface StorageAdapter {
+  read(): RawPersistedData | undefined;
+  write(data: PersistedData): void;
+}
+
+class JsonFileStorageAdapter implements StorageAdapter {
+  constructor(private readonly filePath: string) {}
+
+  read(): RawPersistedData | undefined {
+    if (!existsSync(this.filePath)) return undefined;
+    return JSON.parse(readFileSync(this.filePath, "utf8")) as RawPersistedData;
+  }
+
+  write(data: PersistedData): void {
+    mkdirSync(dirname(this.filePath), { recursive: true });
+    const tempPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
+    writeFileSync(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    renameSync(tempPath, this.filePath);
+  }
 }
 
 const RECENT_USAGE_LIMIT = 1000;
@@ -126,11 +168,13 @@ const defaultBalanceConfig: BalanceConfig = {
 
 export class VaultStore {
   private readonly filePath: string;
+  private readonly storage: StorageAdapter;
   private data: PersistedData;
   private masterKey?: Buffer;
 
   constructor(filePath = join(process.cwd(), ".api-vault", "vault.json")) {
     this.filePath = filePath;
+    this.storage = new JsonFileStorageAdapter(filePath);
     this.data = this.load();
   }
 
@@ -158,13 +202,14 @@ export class VaultStore {
       throw badRequest("Vault is not initialized", "vault_not_initialized");
     }
     this.masterKey = unlockVaultHeader(password, this.data.vault);
+    this.backfillApiKeyHashes();
   }
 
   lock(): void {
     this.masterKey = undefined;
   }
 
-  getState(proxyPort?: number): AppState {
+  getState(proxyPort?: number, cloudflaredStatus?: CloudflaredStatus): AppState {
     this.reloadFromDisk();
     const providers = this.data.providers.map((provider) => this.safeProvider(provider, proxyPort));
     return {
@@ -177,7 +222,9 @@ export class VaultStore {
         b.bucketStart.localeCompare(a.bucketStart) || a.period.localeCompare(b.period)
       ),
       balanceSnapshots: [...this.data.balanceSnapshots].sort((a, b) => b.checkedAt.localeCompare(a.checkedAt)),
-      totals: this.totals()
+      totals: this.totals(),
+      localServices: this.data.localServices.map((service) => this.safeLocalService(service)),
+      cloudflared: cloudflaredStatus ?? { running: false }
     };
   }
 
@@ -197,7 +244,10 @@ export class VaultStore {
       apiKeys: existing?.apiKeys ?? [],
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
-      isLocal: input.isLocal ?? existing?.isLocal ?? false
+      isLocal: input.isLocal ?? existing?.isLocal ?? false,
+      status: existing?.status ?? "unknown",
+      latencyMs: existing?.latencyMs,
+      lastCheckedAt: existing?.lastCheckedAt
     };
 
     if (!record.name) throw badRequest("Provider name is required", "provider_name_required");
@@ -286,7 +336,9 @@ export class VaultStore {
     let plaintext = "";
 
     if (incoming) {
-      for (const candidate of provider.apiKeys) {
+      const incomingHash = hashApiKey(masterKey, incoming);
+      const candidates = provider.apiKeys.filter((candidate) => candidate.keyHash === incomingHash || !candidate.keyHash);
+      for (const candidate of candidates) {
         const decrypted = decryptString(masterKey, candidate.apiKey);
         if (decrypted !== incoming) continue;
         record = candidate;
@@ -295,6 +347,9 @@ export class VaultStore {
       }
     }
     if (!record) {
+      if (!allowProviderProxyWithoutIncomingKey()) {
+        throw badRequest("Missing Authorization Bearer token or x-api-key", "missing_api_key");
+      }
       record = provider.apiKeys[0];
       plaintext = decryptString(masterKey, record.apiKey);
     }
@@ -318,11 +373,13 @@ export class VaultStore {
     this.reloadFromDisk();
     const incoming = apiKey.trim();
     if (!incoming) throw badRequest("API key is required", "api_key_required");
+    const incomingHash = hashApiKey(masterKey, incoming);
 
     const matches: ProviderForProxy[] = [];
     for (const provider of this.data.providers) {
       if (protocol && !protocolCanServe(provider.protocol, protocol)) continue;
       for (const record of provider.apiKeys) {
+        if (record.keyHash && record.keyHash !== incomingHash) continue;
         const plaintext = decryptString(masterKey, record.apiKey);
         if (plaintext !== incoming) continue;
         matches.push({
@@ -549,7 +606,8 @@ export class VaultStore {
           apiKeys: [],
           createdAt: now,
           updatedAt: now,
-          isLocal: input.isLocal ?? false
+          isLocal: input.isLocal ?? false,
+          status: "unknown"
         };
         this.data.providers.push(providerRecord);
       } else {
@@ -594,19 +652,110 @@ export class VaultStore {
     this.save();
   }
 
+  getLocalServices(): LocalService[] {
+    this.reloadFromDisk();
+    return this.data.localServices.map((service) => this.safeLocalService(service));
+  }
+
+  getLocalService(id: string): LocalServiceRecord | undefined {
+    this.reloadFromDisk();
+    return this.data.localServices.find((s) => s.id === id);
+  }
+
+  upsertLocalService(input: Partial<LocalService> & { name: string; baseUrl: string; apiKey?: string }): LocalService {
+    const key = this.requireKey();
+    this.reloadFromDisk();
+    const now = new Date().toISOString();
+    const existing = input.id ? this.data.localServices.find((s) => s.id === input.id) : undefined;
+    const apiKeyInput = typeof input.apiKey === "string" ? input.apiKey.trim() : undefined;
+    const record: LocalServiceRecord = {
+      id: existing?.id ?? randomUUID(),
+      name: input.name.trim(),
+      baseUrl: normalizeBaseUrl(input.baseUrl),
+      type: input.type === undefined ? existing?.type ?? "unknown" : normalizeLocalServiceProtocol(input.type),
+      status: input.status === undefined ? existing?.status ?? "unknown" : normalizeConnectionStatus(input.status),
+      latencyMs: input.latencyMs ?? existing?.latencyMs,
+      lastCheckedAt: input.lastCheckedAt ?? existing?.lastCheckedAt,
+      publicAccessUrl: input.publicAccessUrl ?? existing?.publicAccessUrl,
+      notes: input.notes ?? existing?.notes,
+      hasApiKey: apiKeyInput !== undefined ? Boolean(apiKeyInput) : (existing?.hasApiKey ?? Boolean(existing?.apiKey)),
+      keyMasked: apiKeyInput ? maskKey(apiKeyInput) : existing?.keyMasked,
+      apiKey: apiKeyInput ? encryptString(key, apiKeyInput) : existing?.apiKey,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+    if (!record.name) throw badRequest("Local service name is required", "local_service_name_required");
+    if (!record.baseUrl) throw badRequest("Base URL is required", "base_url_required");
+
+    if (existing) {
+      this.data.localServices = this.data.localServices.map((s) => s.id === record.id ? record : s);
+    } else {
+      this.data.localServices.push(record);
+    }
+    this.save();
+    return this.safeLocalService(record);
+  }
+
+  deleteLocalService(id: string): void {
+    this.reloadFromDisk();
+    this.data.localServices = this.data.localServices.filter((s) => s.id !== id);
+    this.save();
+  }
+
+  updateLocalServiceStatus(id: string, status: LocalServiceStatus, latencyMs?: number, checkedAt?: string): void {
+    this.reloadFromDisk();
+    const service = this.data.localServices.find((s) => s.id === id);
+    if (!service) return;
+    service.status = status;
+    if (latencyMs !== undefined) service.latencyMs = latencyMs;
+    if (checkedAt) service.lastCheckedAt = checkedAt;
+    service.updatedAt = new Date().toISOString();
+    this.save();
+  }
+
+  getLocalServiceApiKey(id: string): string | undefined {
+    const service = this.getLocalService(id);
+    if (!service?.apiKey) return undefined;
+    const key = this.requireKey();
+    return decryptString(key, service.apiKey);
+  }
+
+  updateProviderConnectionStatus(id: string, status: LocalServiceStatus, latencyMs?: number, checkedAt?: string): void {
+    this.reloadFromDisk();
+    const provider = this.data.providers.find((p) => p.id === id);
+    if (!provider) return;
+    provider.status = status;
+    if (latencyMs !== undefined) provider.latencyMs = latencyMs;
+    if (checkedAt) provider.lastCheckedAt = checkedAt;
+    provider.updatedAt = new Date().toISOString();
+    this.save();
+  }
+
+  getCloudflaredPublicUrl(): string | undefined {
+    return this.data.cloudflaredPublicUrl;
+  }
+
+  setCloudflaredPublicUrl(url: string | undefined): void {
+    this.reloadFromDisk();
+    this.data.cloudflaredPublicUrl = url;
+    this.save();
+  }
+
   private load(): PersistedData {
-    if (!existsSync(this.filePath)) {
+    const raw = this.storage.read();
+    if (!raw) {
       return {
         version: 1,
+        storageVersion: 1,
         providers: [],
         proxyTokens: [],
         usageEvents: [],
         usageRollups: [],
-        balanceSnapshots: []
+        balanceSnapshots: [],
+        localServices: []
       };
     }
-    const raw = readFileSync(this.filePath, "utf8");
-    return normalizeData(JSON.parse(raw) as Partial<PersistedData>);
+    return normalizeData(raw);
   }
 
   private reloadFromDisk(): void {
@@ -614,8 +763,7 @@ export class VaultStore {
   }
 
   private save(): void {
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    writeFileSync(this.filePath, `${JSON.stringify(this.data, null, 2)}\n`, "utf8");
+    this.storage.write(this.data);
   }
 
   private requireKey(): Buffer {
@@ -635,12 +783,26 @@ export class VaultStore {
       name: keyName,
       apiKey: encryptString(key, plaintext),
       queryKey: input.queryKey?.trim() ? encryptString(key, input.queryKey.trim()) : undefined,
+      keyHash: hashApiKey(key, plaintext),
       keyMasked: maskKey(plaintext),
       createdAt: now
     };
     provider.apiKeys.push(record);
     provider.updatedAt = now;
     return record;
+  }
+
+  private backfillApiKeyHashes(): void {
+    const masterKey = this.requireKey();
+    let changed = false;
+    for (const provider of this.data.providers) {
+      for (const record of provider.apiKeys) {
+        if (record.keyHash) continue;
+        record.keyHash = hashApiKey(masterKey, decryptString(masterKey, record.apiKey));
+        changed = true;
+      }
+    }
+    if (changed) this.save();
   }
 
   private safeProvider(provider: ProviderRecord, proxyPort?: number): ProviderSafe {
@@ -657,7 +819,10 @@ export class VaultStore {
       apiKeys: provider.apiKeys.map((key) => this.safeApiKey(provider, key, proxyPort)),
       createdAt: provider.createdAt,
       updatedAt: provider.updatedAt,
-      isLocal: provider.isLocal ?? false
+      isLocal: provider.isLocal ?? false,
+      status: provider.status ?? "unknown",
+      latencyMs: provider.latencyMs,
+      lastCheckedAt: provider.lastCheckedAt
     };
   }
 
@@ -673,6 +838,24 @@ export class VaultStore {
       proxyBaseUrl: proxyPort
         ? buildProxyBaseUrl(proxyPort, provider.id, key.id, provider.baseUrl, provider.protocol)
         : undefined
+    };
+  }
+
+  private safeLocalService(service: LocalServiceRecord): LocalService {
+    return {
+      id: service.id,
+      name: service.name,
+      baseUrl: service.baseUrl,
+      type: service.type,
+      status: service.status,
+      latencyMs: service.latencyMs,
+      lastCheckedAt: service.lastCheckedAt,
+      publicAccessUrl: service.publicAccessUrl,
+      notes: service.notes,
+      hasApiKey: service.hasApiKey ?? Boolean(service.apiKey),
+      keyMasked: service.keyMasked,
+      createdAt: service.createdAt,
+      updatedAt: service.updatedAt
     };
   }
 
@@ -812,15 +995,18 @@ export function getDefaultBalanceConfig(): BalanceConfig {
   return { ...defaultBalanceConfig };
 }
 
-function normalizeData(data: Partial<PersistedData> & { providers?: any[] }): PersistedData {
+function normalizeData(data: RawPersistedData): PersistedData {
   return {
     version: data.version ?? 1,
+    storageVersion: data.storageVersion ?? 1,
     vault: data.vault,
     providers: Array.isArray(data.providers) ? data.providers.map(migrateProvider) : [],
-    proxyTokens: Array.isArray((data as any).proxyTokens) ? (data as any).proxyTokens.map(migrateProxyToken) : [],
+    proxyTokens: Array.isArray(data.proxyTokens) ? data.proxyTokens.map(migrateProxyToken) : [],
     usageEvents: Array.isArray(data.usageEvents) ? data.usageEvents : [],
     usageRollups: dedupeRollups(Array.isArray(data.usageRollups) ? data.usageRollups : []),
-    balanceSnapshots: Array.isArray(data.balanceSnapshots) ? data.balanceSnapshots : []
+    balanceSnapshots: Array.isArray(data.balanceSnapshots) ? data.balanceSnapshots : [],
+    localServices: Array.isArray(data.localServices) ? data.localServices.map(migrateLocalService) : [],
+    cloudflaredPublicUrl: data.cloudflaredPublicUrl
   };
 }
 
@@ -851,6 +1037,7 @@ function migrateProvider(raw: any): ProviderRecord {
         name: k.name || "default",
         apiKey: k.apiKey,
         queryKey: k.queryKey,
+        keyHash: typeof k.keyHash === "string" ? k.keyHash : undefined,
         keyMasked: k.keyMasked || "sk-****",
         createdAt: k.createdAt || raw.createdAt || new Date().toISOString(),
         lastUsedAt: k.lastUsedAt
@@ -863,6 +1050,7 @@ function migrateProvider(raw: any): ProviderRecord {
       name: "default",
       apiKey: raw.apiKey,
       queryKey: raw.queryKey,
+      keyHash: typeof raw.keyHash === "string" ? raw.keyHash : undefined,
       keyMasked: "sk-****",
       createdAt: raw.createdAt || new Date().toISOString()
     });
@@ -878,7 +1066,33 @@ function migrateProvider(raw: any): ProviderRecord {
     apiKeys,
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || raw.createdAt || new Date().toISOString(),
-    isLocal: Boolean(raw.isLocal)
+    isLocal: Boolean(raw.isLocal),
+    status: normalizeConnectionStatus(raw.status),
+    latencyMs: typeof raw.latencyMs === "number" ? raw.latencyMs : undefined,
+    lastCheckedAt: typeof raw.lastCheckedAt === "string" ? raw.lastCheckedAt : undefined
+  };
+}
+
+function migrateLocalService(raw: any): LocalServiceRecord {
+  const now = new Date().toISOString();
+  const encryptedApiKey = raw.apiKey && typeof raw.apiKey === "object" && typeof raw.apiKey.ciphertext === "string"
+    ? raw.apiKey as EncryptedText
+    : undefined;
+  return {
+    id: raw.id || randomUUID(),
+    name: stringValue(raw.name).trim() || "Local service",
+    baseUrl: normalizeBaseUrl(raw.baseUrl || "http://127.0.0.1"),
+    type: normalizeLocalServiceProtocol(raw.type),
+    status: normalizeConnectionStatus(raw.status),
+    latencyMs: typeof raw.latencyMs === "number" ? raw.latencyMs : undefined,
+    lastCheckedAt: typeof raw.lastCheckedAt === "string" ? raw.lastCheckedAt : undefined,
+    publicAccessUrl: typeof raw.publicAccessUrl === "string" ? raw.publicAccessUrl : undefined,
+    notes: typeof raw.notes === "string" ? raw.notes : undefined,
+    hasApiKey: Boolean(raw.hasApiKey || encryptedApiKey),
+    keyMasked: typeof raw.keyMasked === "string" ? raw.keyMasked : undefined,
+    apiKey: encryptedApiKey,
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || raw.createdAt || now
   };
 }
 
@@ -902,6 +1116,14 @@ function generateProxyTokenSecret(): string {
 
 function hashProxyToken(secret: string): string {
   return createHash("sha256").update(secret, "utf8").digest("hex");
+}
+
+function hashApiKey(masterKey: Buffer, apiKey: string): string {
+  return createHmac("sha256", masterKey).update(apiKey.trim(), "utf8").digest("hex");
+}
+
+function allowProviderProxyWithoutIncomingKey(): boolean {
+  return process.env.API_VAULT_ALLOW_PROVIDER_PROXY_WITHOUT_KEY === "1";
 }
 
 function maskProxyToken(secret: string): string {
@@ -1100,6 +1322,16 @@ function normalizeStoredProtocol(value: unknown): ApiProtocol {
   return "openai-compatible";
 }
 
+function normalizeLocalServiceProtocol(value: unknown): LocalServiceProtocol {
+  if (value === "openai-compatible" || value === "anthropic-compatible" || value === "custom" || value === "unknown") return value;
+  return "unknown";
+}
+
+function normalizeConnectionStatus(value: unknown): LocalServiceStatus {
+  if (value === "available" || value === "unavailable" || value === "unknown") return value;
+  return "unknown";
+}
+
 function protocolCanServe(stored: ApiProtocol, requested: ApiProtocol): boolean {
   return stored === requested || stored === "openai-anthropic-compatible";
 }
@@ -1126,7 +1358,8 @@ function normalizeBalanceConfig(value: Partial<BalanceConfig> | undefined): Bala
     balancePath: stringValue(raw.balancePath),
     spentPath: stringValue(raw.spentPath),
     currencyPath: stringValue(raw.currencyPath),
-    responseCostPath: stringValue(raw.responseCostPath)
+    responseCostPath: stringValue(raw.responseCostPath),
+    autoSyncIntervalMs: normalizeOptionalInterval(raw.autoSyncIntervalMs)
   };
   if (config.enabled && config.url.trim()) {
     const url = new URL(config.url.trim());
@@ -1141,7 +1374,9 @@ function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-
-
-
-
+function normalizeOptionalInterval(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+  return Math.floor(numeric);
+}

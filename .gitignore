@@ -9,3 +9,5 @@ npm-debug.log*
 !.env.example
 .DS_Store
 Thumbs.db
+.claude/worktrees/
+.claude/worktrees/

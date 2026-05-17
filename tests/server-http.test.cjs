@@ -137,6 +137,32 @@ test("HTTP API manages vault, providers, proxy usage, and billing sync", async (
     assert.equal(keyRouteResult.status, 200);
     assert.equal(keyRouteResult.data.url, result.data.url);
 
+    const providerProxyNoKey = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/${provider.id}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "vendor-model", messages: [] })
+    });
+    assert.equal(providerProxyNoKey.status, 400);
+    assert.equal((await providerProxyNoKey.json()).code, "missing_api_key");
+
+    const previousFallback = process.env.API_VAULT_ALLOW_PROVIDER_PROXY_WITHOUT_KEY;
+    process.env.API_VAULT_ALLOW_PROVIDER_PROXY_WITHOUT_KEY = "1";
+    try {
+      const providerProxyFallback = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/${provider.id}/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "vendor-model", messages: [] })
+      });
+      assert.equal(providerProxyFallback.status, 200);
+      assert.equal((await providerProxyFallback.json()).usage.total_tokens, 18);
+    } finally {
+      if (previousFallback === undefined) {
+        delete process.env.API_VAULT_ALLOW_PROVIDER_PROXY_WITHOUT_KEY;
+      } else {
+        process.env.API_VAULT_ALLOW_PROVIDER_PROXY_WITHOUT_KEY = previousFallback;
+      }
+    }
+
     const openaiGlobalUrl = `http://127.0.0.1:${proxy.getPort()}/proxy/openai/v1`;
     const chat = await fetch(`${openaiGlobalUrl}/chat/completions`, {
       method: "POST",
@@ -190,7 +216,7 @@ test("HTTP API manages vault, providers, proxy usage, and billing sync", async (
 
     result = await requestJson(apiBase, "/api/state");
     assert.equal(result.status, 200);
-    assert.equal(result.data.usageEvents.length, 3);
+    assert.equal(result.data.usageEvents.length, 4);
     const publicEvent = result.data.usageEvents.find((event) => event.gatewayType === "public-proxy");
     assert.equal(publicEvent.proxyTokenName, "ci client");
     assert.equal(publicEvent.model, "vendor-model");
@@ -206,7 +232,7 @@ test("HTTP API manages vault, providers, proxy usage, and billing sync", async (
     assert.equal(key1Event.realCost, 0.0123);
     assert.equal(key1Event.currency, "credits");
     assert.equal(result.data.balanceSnapshots.length, 1);
-    assert.equal(upstreamHits.length, 4);
+    assert.equal(upstreamHits.length, 5);
 
     const persisted = fs.readFileSync(path.join(tempDir, "vault.json"), "utf8");
     assert.equal(persisted.includes("sk-real"), false);
@@ -347,6 +373,164 @@ test("HTTP API returns specific status codes for invalid inputs", async () => {
   } finally {
     proxy.stop();
     await close(api);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("HTTP API CORS defaults to the current local service origin", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-cors-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    const sameOrigin = await fetch(`${apiBase}/api/state`, {
+      headers: { origin: apiBase }
+    });
+    assert.equal(sameOrigin.headers.get("access-control-allow-origin"), apiBase);
+
+    const otherOrigin = await fetch(`${apiBase}/api/state`, {
+      headers: { origin: "http://localhost:9999" }
+    });
+    assert.equal(otherOrigin.headers.get("access-control-allow-origin"), null);
+  } finally {
+    proxy.stop();
+    await close(api);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("provider proxy parses JSON stream flag before injecting stream options", async () => {
+  let upstreamBody = "";
+  const upstream = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      upstreamBody = Buffer.concat(chunks).toString("utf8");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        model: "vendor-model",
+        choices: [],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+      }));
+    });
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-stream-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/providers/add-key", {
+      method: "POST",
+      body: {
+        providerName: "Stream Provider",
+        keyName: "stream",
+        protocol: "openai-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+        currency: "USD",
+        apiKey: "sk-stream",
+        balanceConfig: { enabled: false }
+      }
+    });
+    assert.equal(result.status, 200);
+    const provider = result.data.providers[0];
+
+    const response = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/${provider.id}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer sk-stream" },
+      rawBody: undefined,
+      body: `{ "model": "vendor-model", "stream" : true, "messages": [] }`
+    });
+    assert.equal(response.status, 200);
+    await response.text();
+
+    const forwarded = JSON.parse(upstreamBody);
+    assert.equal(forwarded.stream, true);
+    assert.deepEqual(forwarded.stream_options, { include_usage: true });
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("URL test falls back to unauthenticated Anthropic-compatible probes when models route returns 404 with a key", async () => {
+  const upstreamHits = [];
+  const upstream = http.createServer((req, res) => {
+    upstreamHits.push({ url: req.url, xApiKey: req.headers["x-api-key"] });
+    if (req.url === "/anthropic/models" && !req.headers["x-api-key"]) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "missing auth" }));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-anthropic-test-url-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/providers/add-key", {
+      method: "POST",
+      body: {
+        providerName: "Anthropic Route",
+        keyName: "anthropic",
+        protocol: "anthropic-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/anthropic`,
+        currency: "USD",
+        apiKey: "sk-anthropic",
+        balanceConfig: { enabled: false }
+      }
+    });
+    assert.equal(result.status, 200);
+    const provider = result.data.providers[0];
+
+    result = await requestJson(apiBase, "/api/test-url", {
+      method: "POST",
+      body: {
+        providerId: provider.id,
+        protocol: "anthropic-compatible",
+        baseUrl: provider.baseUrl
+      }
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(result.data.ok, true);
+    assert.equal(result.data.status, 401);
+    assert.equal(upstreamHits.some((hit) => hit.url === "/anthropic/models" && hit.xApiKey === undefined), true);
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

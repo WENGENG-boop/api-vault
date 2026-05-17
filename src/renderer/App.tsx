@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
-import type { AddKeyInput, AppState, BalanceConfig, BalanceSnapshot, ProviderSafe, ProxyModelRule, ProxyTokenInput, UsageEvent, UsageRollup } from "../shared/types";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import type { AddKeyInput, AppState, BalanceConfig, BalanceSnapshot, CloudflaredStatus, LocalService, ProviderSafe, ProxyModelRule, ProxyTokenInput, UsageEvent, UsageRollup } from "../shared/types";
 import { apiClient, copyTextToClipboard } from "./apiClient";
 import type { UrlTestResult } from "./apiClient";
 
 type UrlTestStatus = UrlTestResult & { testing?: boolean };
 
-type Tab = "dashboard" | "providers" | "proxy-tokens" | "usage" | "billing";
+type Tab = "dashboard" | "providers" | "proxy-tokens" | "local-services" | "usage" | "billing";
 type AnalyticsRange = "1h" | "24h" | "7d" | "all";
 type AnalyticsStatus = "all" | "ok" | "failed";
 type DashboardRange = "all" | "30d" | "7d" | "today";
@@ -46,6 +46,7 @@ function gatewayLabel(event: UsageEvent): string {
   if (event.gatewayType === "anthropic") return "anthropic global";
   if (event.gatewayType === "auto") return "auto global";
   if (event.gatewayType === "public-proxy") return "public proxy";
+  if (event.gatewayType === "local-service") return "local service";
   if (event.gatewayType === "legacy-key") return "legacy key url";
   return "provider url";
 }
@@ -128,13 +129,15 @@ export default function App() {
       <nav className="sidebar">
         <div className="brand">API Vault</div>
         <div className="nav-items">
-          {(["dashboard", "providers", "proxy-tokens", "usage", "billing"] as Tab[]).map((t) => (
+          {(["dashboard", "providers", "proxy-tokens", "local-services", "usage", "billing"] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "proxy-tokens" ? "Proxy Tokens" : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === "proxy-tokens" ? "Proxy Tokens" : t === "local-services" ? "Local Services" : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
         {state.proxyPort && <div className="proxy-status">Proxy: 127.0.0.1:{state.proxyPort}</div>}
+        {state.cloudflared.running && <div className="proxy-status" title={state.cloudflared.publicUrl ?? ""}>Tunnel: Active</div>}
+        {!state.cloudflared.running && <div className="proxy-status" style={{ color: "var(--muted)" }}>Tunnel: Off</div>}
         <button className="lock-btn" onClick={lock}>Lock Vault</button>
       </nav>
       <main className="content">
@@ -149,6 +152,7 @@ export default function App() {
         {tab === "dashboard" && <Dashboard state={state} />}
         {tab === "providers" && <Providers state={state} setState={setState} showMsg={showMsg} showErr={showErr} />}
         {tab === "proxy-tokens" && <ProxyTokens state={state} setState={setState} showMsg={showMsg} showErr={showErr} />}
+        {tab === "local-services" && <LocalServicesPage state={state} setState={setState} showMsg={showMsg} showErr={showErr} />}
         {tab === "usage" && <Usage state={state} />}
         {tab === "billing" && <Billing state={state} setState={setState} showMsg={showMsg} showErr={showErr} />}
       </main>
@@ -156,7 +160,7 @@ export default function App() {
   );
 }
 
-/* ─── Dashboard ─── */
+/* 鈹€鈹€鈹€ Dashboard 鈹€鈹€鈹€ */
 function formatMoney(value: number, currency?: string): string {
   const unit = currency?.trim();
   return unit ? `${unit} ${value.toFixed(4)}` : value.toFixed(4);
@@ -247,7 +251,6 @@ interface ModelTokenShare {
 function Dashboard({ state }: { state: AppState }) {
   const [dashboardView, setDashboardView] = useState<DashboardView>("overview");
   const [dashboardRange, setDashboardRange] = useState<DashboardRange>("all");
-  const [showModelRanking, setShowModelRanking] = useState(false);
   const rows = useMemo(() => dashboardRowsForRange(state.usageEvents, state.usageRollups ?? [], dashboardRange), [state.usageEvents, state.usageRollups, dashboardRange]);
   const ranking = useMemo(() => buildModelTokenRanking(rows), [rows]);
   const summary = useMemo(() => buildDashboardSummary(rows, ranking), [rows, ranking]);
@@ -280,14 +283,18 @@ function Dashboard({ state }: { state: AppState }) {
           </div>
 
           {dashboardView === "overview" ? (
-            <DashboardOverview summary={summary} heatmap={heatmap} />
+            <div className="dashboard-view dashboard-view-overview">
+              <DashboardOverview summary={summary} heatmap={heatmap} />
+            </div>
           ) : (
-            <DashboardModels shares={modelShares} totalTokens={summary.totalTokens} />
+            <div className="dashboard-view dashboard-view-models">
+              <DashboardModels shares={modelShares} totalTokens={summary.totalTokens} />
+            </div>
           )}
         </section>
 
         <aside className="dashboard-rail">
-          <section className="dashboard-side-card">
+          <section className="dashboard-side-card dashboard-card-fixed dashboard-top-provider-card">
             <div className="dashboard-side-head">
               <h3>Top Token Provider</h3>
               <span>{topProvider ? `${compactNumber(topProvider.stats.total)} tokens` : "No data"}</span>
@@ -295,23 +302,20 @@ function Dashboard({ state }: { state: AppState }) {
             <DashboardTopProvider topProvider={topProvider} />
           </section>
 
-          <section className="dashboard-side-card dashboard-leaderboard-card">
+          <section className="dashboard-side-card dashboard-card-fixed dashboard-connection-card">
             <div className="dashboard-side-head">
-              <h3>Model Token Leaderboard</h3>
-              <span>{compactNumber(summary.totalTokens)} total</span>
+              <h3>API Connection Status</h3>
             </div>
-            {ranking.length === 0 ? (
-              <p className="empty">No token usage recorded yet.</p>
-            ) : (
-              <ModelTokenLeaderboard data={ranking} limit={3} onItemClick={() => setShowModelRanking(true)} />
-            )}
+            <div className="dashboard-card-scroll">
+              <ProviderConnectionStatus
+                providers={state.providers}
+                localServices={state.localServices}
+                cloudflared={state.cloudflared}
+              />
+            </div>
           </section>
         </aside>
       </div>
-    
-      {showModelRanking && (
-        <ModelRankingModal ranking={ranking} totalTokens={summary.totalTokens} onClose={() => setShowModelRanking(false)} />
-      )}
     </div>
   );
 }
@@ -385,18 +389,91 @@ function DashboardHeatmap({ days }: { days: HeatmapDay[] }) {
   const cellSize = count <= 1 ? 48 : count <= 7 ? 32 : count <= 30 ? 18 : 12;
   const cols = count <= 1 ? 1 : 7;
   const showLabels = count <= 7;
+  if (count === 0 || (count === 1 && max === 0)) {
+    return <div className="dashboard-heatmap-wrap"><p className="empty" style={{ padding: "12px 0" }}>No usage data yet</p></div>;
+  }
   return (
-    <div className="dashboard-heatmap" aria-label="Token activity by day" style={{ gridTemplateColumns: `repeat(${cols}, ${cellSize}px)` }}>
-      {days.map((day) => {
-        const level = max <= 0 || day.tokens <= 0 ? 0 : Math.max(1, Math.ceil((day.tokens / max) * 4));
+    <div className="dashboard-heatmap-wrap">
+      <div className="dashboard-heatmap" aria-label="Token activity by day" style={{ gridTemplateColumns: `repeat(${cols}, ${cellSize}px)` }}>
+        {days.map((day) => {
+          const level = max <= 0 || day.tokens <= 0 ? 0 : Math.max(1, Math.ceil((day.tokens / max) * 4));
+          return (
+            <div key={day.key} className="dashboard-heat-wrapper">
+              <span
+                className={`dashboard-heat-cell level-${level}`}
+                style={{ width: cellSize, height: cellSize }}
+                title={`${day.label}: ${compactNumber(day.tokens)} tokens`}
+              />
+              {showLabels && <span className="dashboard-heat-label">{day.label}</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProviderConnectionStatus({ providers, localServices, cloudflared }: {
+  providers: ProviderSafe[];
+  localServices: LocalService[];
+  cloudflared: CloudflaredStatus;
+}) {
+  const [tests, setTests] = useState<Record<string, { ok?: boolean; latencyMs?: number; status?: number; checkedAt?: string; error?: string; testing?: boolean }>>({});
+
+  const items = useMemo(() => {
+    const result: Array<{ id: string; name: string; baseUrl: string; type: "provider" | "local"; status?: string; latencyMs?: number; lastCheckedAt?: string }> = [];
+    for (const p of providers) result.push({ id: p.id, name: p.name, baseUrl: p.baseUrl, type: "provider", status: p.status, latencyMs: p.latencyMs, lastCheckedAt: p.lastCheckedAt });
+    for (const s of localServices) result.push({ id: s.id, name: s.name, baseUrl: s.baseUrl, type: "local", status: s.status, latencyMs: s.latencyMs, lastCheckedAt: s.lastCheckedAt });
+    return result;
+  }, [providers, localServices]);
+
+  async function testItem(item: { id: string; baseUrl: string; type: string }) {
+    setTests((prev) => ({ ...prev, [`${item.type}:${item.id}`]: { testing: true } }));
+    try {
+      if (item.type === "local") {
+        const result = await apiClient.testLocalService(item.id);
+        setTests((prev) => ({ ...prev, [`${item.type}:${item.id}`]: { ...result, testing: false } }));
+      } else {
+        const result = await apiClient.testUrl({ baseUrl: item.baseUrl, providerId: item.id });
+        setTests((prev) => ({ ...prev, [`${item.type}:${item.id}`]: { ...result, testing: false } }));
+      }
+    } catch (e) {
+      setTests((prev) => ({ ...prev, [`${item.type}:${item.id}`]: { ok: false, latencyMs: 0, error: e instanceof Error ? e.message : String(e), checkedAt: new Date().toISOString(), testing: false } }));
+    }
+  }
+
+  if (items.length === 0) {
+    return <p className="empty">No providers or local services yet.</p>;
+  }
+
+  return (
+    <div className="connection-status-list">
+      {items.map((item) => {
+        const key = `${item.type}:${item.id}`;
+        const test = tests[key];
+        const ok = test?.ok ?? (item.status === "available" ? true : item.status === "unavailable" ? false : undefined);
+        const latencyMs = test?.latencyMs ?? item.latencyMs;
+        const checkedAt = test?.checkedAt ?? item.lastCheckedAt;
+        const publicAccessUrl = item.type === "local" && cloudflared.running && cloudflared.publicUrl
+          ? `${cloudflared.publicUrl}/api/proxy/local/${item.id}/v1`
+          : undefined;
         return (
-          <div key={day.key} className="dashboard-heat-wrapper">
-            <span
-              className={`dashboard-heat-cell level-${level}`}
-              style={{ width: cellSize, height: cellSize }}
-              title={`${day.label}: ${compactNumber(day.tokens)} tokens`}
-            />
-            {showLabels && <span className="dashboard-heat-label">{day.label}</span>}
+          <div key={key} className="connection-status-item">
+            <div className="connection-status-top">
+              <span className={`connection-status-dot ${test?.testing ? "testing" : ok === undefined ? "idle" : ok ? "ok" : "fail"}`} />
+              <strong>{shortLabel(item.name, 16)}</strong>
+              <button type="button" className="connection-test-btn" onClick={() => testItem(item)} disabled={test?.testing}>
+                {test?.testing ? "..." : "Test"}
+              </button>
+            </div>
+            <div className="connection-status-url">{shortLabel(item.baseUrl, 32)}</div>
+            <div className="connection-status-latency">
+              {ok === undefined ? "Unknown" : ok ? "Available" : "Unavailable"}
+              {latencyMs !== undefined ? ` - ${latencyMs}ms` : ""}
+              {checkedAt ? ` - ${new Date(checkedAt).toLocaleTimeString()}` : ""}
+            </div>
+            {test?.error && <div className="connection-status-error">{shortLabel(test.error, 46)}</div>}
+            {publicAccessUrl && <div className="connection-status-url">{shortLabel(publicAccessUrl, 42)}</div>}
           </div>
         );
       })}
@@ -1002,7 +1079,7 @@ function CallLeaderboard({ data }: { data: ReturnType<typeof buildCallRanking> }
   );
 }
 
-/* ─── Providers ─── */
+/* 鈹€鈹€鈹€ Providers 鈹€鈹€鈹€ */
 function ModelTokenLeaderboard({ data, limit, onItemClick }: {
   data: ReturnType<typeof buildModelTokenRanking>;
   limit?: number;
@@ -1132,13 +1209,13 @@ function UrlTestStatusLine({ test }: { test?: UrlTestStatus }) {
   if (test.ok) {
     return (
       <div className="url-test-status url-test-status--ok">
-        OK {test.status} · <strong>{test.latencyMs}ms</strong> · checked {time}
+        OK {test.status} 路 <strong>{test.latencyMs}ms</strong> 路 checked {time}
       </div>
     );
   }
   return (
     <div className="url-test-status url-test-status--fail">
-      Failed: {test.error ?? `HTTP ${test.status ?? "?"}`} · checked {time}
+      Failed: {test.error ?? `HTTP ${test.status ?? "?"}`} 路 checked {time}
     </div>
   );
 }
@@ -1164,7 +1241,7 @@ function Providers({ state, setState, showMsg, showErr }: {
   async function runProviderUrlTest(p: ProviderSafe) {
     setUrlTests((prev) => ({ ...prev, [p.id]: { ...(prev[p.id] ?? { ok: false, latencyMs: 0, checkedAt: "" }), testing: true } }));
     try {
-      const result = await apiClient.testUrl({ baseUrl: p.baseUrl, protocol: p.protocol, providerId: p.id, isLocal: p.isLocal });
+      const result = await apiClient.testUrl({ baseUrl: p.baseUrl, protocol: p.protocol, providerId: p.id });
       setUrlTests((prev) => ({ ...prev, [p.id]: { ...result, testing: false } }));
     } catch (e) {
       setUrlTests((prev) => ({ ...prev, [p.id]: { ok: false, latencyMs: 0, error: e instanceof Error ? e.message : String(e), checkedAt: new Date().toISOString(), testing: false } }));
@@ -1177,13 +1254,13 @@ function Providers({ state, setState, showMsg, showErr }: {
     run();
     const timer = window.setInterval(run, 60_000);
     return () => window.clearInterval(timer);
-  }, [state.providers.map((p) => `${p.id}:${p.baseUrl}:${p.protocol}:${p.isLocal ? 1 : 0}`).join("|")]);
+  }, [state.providers.map((p) => `${p.id}:${p.baseUrl}:${p.protocol}`).join("|")]);
 
   async function testFormUrl() {
     if (!form.baseUrl?.trim()) return;
     setFormTest({ ok: false, latencyMs: 0, checkedAt: "", testing: true });
     try {
-      const result = await apiClient.testUrl({ baseUrl: form.baseUrl, protocol: form.protocol, providerId: editId, isLocal: !!form.isLocal });
+      const result = await apiClient.testUrl({ baseUrl: form.baseUrl, protocol: form.protocol, providerId: editId });
       setFormTest({ ...result, testing: false });
     } catch (e) {
       setFormTest({ ok: false, latencyMs: 0, error: e instanceof Error ? e.message : String(e), checkedAt: new Date().toISOString(), testing: false });
@@ -1194,7 +1271,7 @@ function Providers({ state, setState, showMsg, showErr }: {
     if (!providerEditForm.baseUrl?.trim()) return;
     setEditTest({ ok: false, latencyMs: 0, checkedAt: "", testing: true });
     try {
-      const result = await apiClient.testUrl({ baseUrl: providerEditForm.baseUrl, protocol: providerEditForm.protocol, providerId, isLocal: !!providerEditForm.isLocal });
+      const result = await apiClient.testUrl({ baseUrl: providerEditForm.baseUrl, protocol: providerEditForm.protocol, providerId });
       setEditTest({ ...result, testing: false });
     } catch (e) {
       setEditTest({ ok: false, latencyMs: 0, error: e instanceof Error ? e.message : String(e), checkedAt: new Date().toISOString(), testing: false });
@@ -1202,11 +1279,11 @@ function Providers({ state, setState, showMsg, showErr }: {
   }
 
   function emptyForm(): any {
-    return { providerName: "", keyName: "", protocol: "openai-compatible", baseUrl: "", currency: "USD", apiKey: "", queryKey: "", isLocal: false, balanceConfig: { ...defaultBalanceConfig } };
+    return { providerName: "", keyName: "", protocol: "openai-compatible", baseUrl: "", currency: "USD", apiKey: "", queryKey: "", balanceConfig: { ...defaultBalanceConfig } };
   }
 
   function startEdit(p: ProviderSafe) {
-    setForm({ id: p.id, name: p.name, protocol: p.protocol, baseUrl: p.baseUrl, currency: p.currency, apiKey: "", queryKey: "", isLocal: p.isLocal ?? false, balanceConfig: { ...p.balanceConfig } });
+    setForm({ id: p.id, name: p.name, protocol: p.protocol, baseUrl: p.baseUrl, currency: p.currency, apiKey: "", queryKey: "", balanceConfig: { ...p.balanceConfig } });
     setEditId(p.id);
     setProviderEditId(undefined);
     setSelectedProviderId(undefined);
@@ -1220,7 +1297,6 @@ function Providers({ state, setState, showMsg, showErr }: {
       protocol: p.protocol,
       baseUrl: p.baseUrl,
       currency: p.currency,
-      isLocal: p.isLocal ?? false,
       balanceConfig: { ...p.balanceConfig }
     });
   }
@@ -1233,8 +1309,7 @@ function Providers({ state, setState, showMsg, showErr }: {
         protocol: providerEditForm.protocol,
         baseUrl: providerEditForm.baseUrl,
         currency: providerEditForm.currency,
-        balanceConfig: providerEditForm.balanceConfig,
-        isLocal: !!providerEditForm.isLocal
+        balanceConfig: providerEditForm.balanceConfig
       });
       setState(s);
       setProviderEditId(undefined);
@@ -1254,8 +1329,7 @@ function Providers({ state, setState, showMsg, showErr }: {
         balanceConfig: form.balanceConfig,
         keyName: form.keyName || "default",
         apiKey: form.apiKey,
-        queryKey: form.queryKey,
-        isLocal: !!form.isLocal
+        queryKey: form.queryKey
       };
       const s = await apiClient.addKeyWithAutoMerge(payload);
       setState(s);
@@ -1358,10 +1432,6 @@ function Providers({ state, setState, showMsg, showErr }: {
                 <option value="openai-anthropic-compatible">OpenAI + Anthropic Compatible</option>
               </select>
             </label>
-            <label className="local-toggle">
-              <input type="checkbox" checked={!!form.isLocal} onChange={(e) => { setForm({ ...form, isLocal: e.target.checked }); setFormTest(undefined); }} />
-              Local service (e.g. Ollama, LM Studio, LAN)
-            </label>
             <label>Base URL
               <div className="url-input-row">
                 <input value={form.baseUrl} onChange={(e) => { setForm({ ...form, baseUrl: e.target.value }); setFormTest(undefined); }} placeholder="https://api.openai.com/v1" />
@@ -1433,7 +1503,6 @@ function Providers({ state, setState, showMsg, showErr }: {
                 <div className="provider-summary-name">
                   <strong>{p.name}</strong>
                   <span className="provider-protocol">{p.protocol}</span>
-                  {p.isLocal && <span className="provider-protocol provider-local-badge">Local</span>}
                   <span className="provider-protocol">{p.apiKeys.length} keys</span>
                 </div>
                 <button
@@ -1480,7 +1549,6 @@ function Providers({ state, setState, showMsg, showErr }: {
                   <div className="provider-header">
                     <strong>{selectedProvider.name}</strong>
                     <span className="provider-protocol">{selectedProvider.protocol}</span>
-                    {selectedProvider.isLocal && <span className="provider-protocol provider-local-badge">Local</span>}
                     <span className="provider-protocol">{selectedProvider.apiKeys.length} keys</span>
                   </div>
                   <div className="provider-url">
@@ -1509,10 +1577,6 @@ function Providers({ state, setState, showMsg, showErr }: {
                         <option value="anthropic-compatible">Anthropic Compatible</option>
                         <option value="openai-anthropic-compatible">OpenAI + Anthropic Compatible</option>
                       </select>
-                    </label>
-                    <label className="local-toggle">
-                      <input type="checkbox" checked={!!providerEditForm.isLocal} onChange={(event) => { setProviderEditForm({ ...providerEditForm, isLocal: event.target.checked }); setEditTest(undefined); }} />
-                      Local service (e.g. Ollama, LM Studio, LAN)
                     </label>
                     <label>Base URL
                       <div className="url-input-row">
@@ -1547,22 +1611,6 @@ function Providers({ state, setState, showMsg, showErr }: {
                 <span>{statsCost(providerStats)}</span>
                 <span>{providerStats.lastUsedAt ? `Last ${new Date(providerStats.lastUsedAt).toLocaleString()}` : "Not used yet"}</span>
               </div>
-
-              {selectedProvider.isLocal && selectedProvider.proxyBaseUrl && (
-                <div className="local-routing-hint">
-                  <strong>Local service · route external apps through API Vault to record usage</strong>
-                  <p>
-                    Don't paste <code>{selectedProvider.baseUrl}</code> into your external apps directly — those calls bypass API Vault and won't be tracked.
-                  </p>
-                  <p>
-                    Instead, use the API Vault URL below as the Base URL in your external app. Requests will be forwarded to your local service and recorded.
-                  </p>
-                  <div className="local-routing-url">
-                    <code>{selectedProvider.proxyBaseUrl}</code>
-                    <button onClick={() => copyProxy(selectedProvider.id)}>Copy URL</button>
-                  </div>
-                </div>
-              )}
 
               {selectedProvider.proxyBaseUrl && (
                 <div className="base-url-pair provider-proxy-block">
@@ -1622,7 +1670,7 @@ function Providers({ state, setState, showMsg, showErr }: {
   );
 }
 
-/* ─── Usage ─── */
+/* 鈹€鈹€鈹€ Usage 鈹€鈹€鈹€ */
 function ProxyTokens({ state, setState, showMsg, showErr }: {
   state: AppState; setState: (s: AppState) => void; showMsg: (m: string) => void; showErr: (e: unknown) => void;
 }) {
@@ -1692,22 +1740,29 @@ function ProxyTokens({ state, setState, showMsg, showErr }: {
 
   return (
     <div className="page">
-      <div className="page-header"><h2>Proxy Tokens</h2></div>
-      <div className="usage-hint">
-        Public remote calls use <code>Authorization: Bearer proxy_xxx</code> with <code>/proxy/v1/chat/completions</code>. The real provider key stays inside API Vault.
+      <div className="page-header proxy-token-page-header">
+        <h2>Proxy Tokens</h2>
+        <span className="proxy-token-count">{state.proxyTokens.length} active token{state.proxyTokens.length === 1 ? "" : "s"}</span>
+      </div>
+      <div className="usage-hint proxy-token-hint">
+        Use <code>Authorization: Bearer proxy_xxx</code> against <code>/proxy/v1/chat/completions</code>. Real provider keys never leave API Vault.
       </div>
       <div className="form-card proxy-token-form">
-        <h3>Create public proxy token</h3>
+        <div className="proxy-token-section-head">
+          <h3>Create Proxy Token</h3>
+          <span>Create scoped access for external clients</span>
+        </div>
         <div className="form-grid">
           <label>Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
           <label>Requests / minute<input type="number" value={form.requestsPerMinute} onChange={(e) => setForm({ ...form, requestsPerMinute: Number(e.target.value) })} /></label>
           <label>Requests / day<input type="number" value={form.requestsPerDay} onChange={(e) => setForm({ ...form, requestsPerDay: Number(e.target.value) })} /></label>
           <label>Expires at<input type="datetime-local" value={form.expiresAt ?? ""} onChange={(e) => setForm({ ...form, expiresAt: e.target.value })} /></label>
-          <label><input type="checkbox" checked={form.allowStreaming} onChange={(e) => setForm({ ...form, allowStreaming: e.target.checked })} /> Allow streaming</label>
+          <label className="proxy-token-toggle"><input type="checkbox" checked={form.allowStreaming} onChange={(e) => setForm({ ...form, allowStreaming: e.target.checked })} /> Allow streaming</label>
         </div>
         <div className="proxy-token-provider-list">
+          <strong>Allowed providers</strong>
           {state.providers.map((provider) => (
-            <label key={provider.id}>
+            <label key={provider.id} className="proxy-token-chip">
               <input type="checkbox" checked={form.allowedProviderIds.includes(provider.id)} onChange={(e) => setForm({
                 ...form,
                 allowedProviderIds: e.target.checked ? [...form.allowedProviderIds, provider.id] : form.allowedProviderIds.filter((id) => id !== provider.id)
@@ -1717,7 +1772,10 @@ function ProxyTokens({ state, setState, showMsg, showErr }: {
           ))}
         </div>
         <div className="proxy-rule-builder">
-          <strong>Model mapping</strong>
+          <div className="proxy-token-section-head">
+            <h4>Model Mapping</h4>
+            <span>Public name -&gt; provider / upstream model</span>
+          </div>
           <div className="form-grid">
             <label>Public model<input value={rule.publicModel} onChange={(e) => setRule({ ...rule, publicModel: e.target.value })} placeholder="claude-desktop" /></label>
             <label>Provider<select value={rule.providerId} onChange={(e) => {
@@ -1730,13 +1788,15 @@ function ProxyTokens({ state, setState, showMsg, showErr }: {
             </select></label>
             <label>Upstream model<input value={rule.upstreamModel} onChange={(e) => setRule({ ...rule, upstreamModel: e.target.value })} placeholder="real-model-id" /></label>
           </div>
-          <button onClick={addRule}>Add model rule</button>
+          <button className="proxy-token-add-rule" onClick={addRule}>Add model rule</button>
           <div className="proxy-rule-list">
             {form.allowedModels.map((item, index) => (
-              <span key={`${item.publicModel}-${index}`}>{item.publicModel} {"->"} {selectedProvider(item.providerId)?.name ?? item.providerId} / {item.upstreamModel}
-                <button onClick={() => setForm({ ...form, allowedModels: form.allowedModels.filter((_, i) => i !== index) })}>x</button>
+              <span key={`${item.publicModel}-${index}`} className="proxy-rule-item">
+                <code>{item.publicModel}</code> {"->"} {selectedProvider(item.providerId)?.name ?? item.providerId} / <code>{item.upstreamModel}</code>
+                <button onClick={() => setForm({ ...form, allowedModels: form.allowedModels.filter((_, i) => i !== index) })}>Remove</button>
               </span>
             ))}
+            {form.allowedModels.length === 0 && <p className="empty">No model mapping rules yet.</p>}
           </div>
         </div>
         <button className="btn-primary" onClick={create} disabled={state.providers.length === 0}>Create Token</button>
@@ -1745,9 +1805,18 @@ function ProxyTokens({ state, setState, showMsg, showErr }: {
       <div className="proxy-token-list">
         {state.proxyTokens.map((token) => (
           <div key={token.id} className="proxy-token-card">
-            <div><strong>{token.name}</strong> <code>{token.tokenMasked}</code> <span>{token.enabled ? "enabled" : "disabled"}</span></div>
-            <p>{token.allowedModels.length} model rules - {token.requestsPerMinute}/min - {token.requestsPerDay}/day - stream {token.allowStreaming ? "on" : "off"}</p>
-            <div className="provider-actions">
+            <div className="proxy-token-card-head">
+              <strong>{token.name}</strong>
+              <span className={`proxy-token-state ${token.enabled ? "enabled" : "disabled"}`}>{token.enabled ? "Enabled" : "Disabled"}</span>
+            </div>
+            <code className="proxy-token-mask">{token.tokenMasked}</code>
+            <div className="proxy-token-meta">
+              <span>{token.allowedModels.length} model rules</span>
+              <span>{token.requestsPerMinute}/min</span>
+              <span>{token.requestsPerDay}/day</span>
+              <span>stream {token.allowStreaming ? "on" : "off"}</span>
+            </div>
+            <div className="provider-actions proxy-token-actions">
               <button onClick={() => toggle(token.id, !token.enabled)}>{token.enabled ? "Disable" : "Enable"}</button>
               <button onClick={() => regenerate(token.id)}>Regenerate</button>
               <button className="btn-danger" onClick={() => remove(token.id)}>Delete</button>
@@ -1759,6 +1828,235 @@ function ProxyTokens({ state, setState, showMsg, showErr }: {
     </div>
   );
 }
+
+	/* 鈹€鈹€鈹€ Local Services 鈹€鈹€鈹€ */
+	function LocalServicesPage({ state, setState, showMsg, showErr }: {
+	  state: AppState; setState: (s: AppState) => void; showMsg: (m: string) => void; showErr: (e: unknown) => void;
+	}) {
+	  const [showForm, setShowForm] = useState(false);
+	  const [form, setForm] = useState({ name: "", baseUrl: "", type: "unknown" as string, notes: "", apiKey: "" });
+	  const [cfTestResult, setCfTestResult] = useState<{ ok?: boolean; status?: number; latencyMs?: number; error?: string; modelNames?: string[]; testing?: boolean }>({});
+	  const [cfStatus, setCfStatus] = useState<CloudflaredStatus>(state.cloudflared);
+	  const [cfLoading, setCfLoading] = useState(false);
+	  const [serviceTests, setServiceTests] = useState<Record<string, { ok?: boolean; latencyMs?: number; error?: string; modelNames?: string[]; testing?: boolean }>>({});
+
+	  useEffect(() => {
+	    apiClient.getCloudflaredStatus().then(setCfStatus).catch(() => {});
+	  }, []);
+
+	  async function testUrl() {
+	    if (!form.baseUrl.trim()) return;
+	    setCfTestResult({ testing: true });
+	    try {
+	      const protocol = form.type === "anthropic-compatible" ? "anthropic-compatible" : "openai-compatible";
+	      const result = await apiClient.testUrl({ baseUrl: form.baseUrl, protocol, isLocal: true, type: form.type, apiKey: form.apiKey });
+	      setCfTestResult({ ...result, testing: false });
+	    } catch (e) {
+	      setCfTestResult({ ok: false, error: e instanceof Error ? e.message : String(e), testing: false });
+	    }
+	  }
+
+	  async function save() {
+	    if (!form.name.trim() || !form.baseUrl.trim()) return;
+	    try {
+	      const s = await apiClient.saveLocalService({
+	        name: form.name,
+	        baseUrl: form.baseUrl,
+	        type: form.type as any,
+	        notes: form.notes,
+	        apiKey: form.apiKey
+	      });
+	      setState(s);
+	      setShowForm(false);
+	      setForm({ name: "", baseUrl: "", type: "unknown", notes: "", apiKey: "" });
+	      showMsg("Local service added");
+	    } catch (e) { showErr(e); }
+	  }
+
+	  async function remove(id: string) {
+	    if (!confirm("Delete this local service?")) return;
+	    try { const s = await apiClient.deleteLocalService(id); setState(s); showMsg("Deleted"); }
+	    catch (e) { showErr(e); }
+	  }
+
+	  async function testService(id: string) {
+	    setServiceTests((prev) => ({ ...prev, [id]: { testing: true } }));
+	    try {
+	      const result = await apiClient.testLocalService(id);
+	      setServiceTests((prev) => ({ ...prev, [id]: { ...result, testing: false } }));
+	      const s = await apiClient.getState();
+	      setState(s);
+	    } catch (e) {
+	      setServiceTests((prev) => ({ ...prev, [id]: { ok: false, error: e instanceof Error ? e.message : String(e), testing: false } }));
+	    }
+	  }
+
+	  async function startTunnel() {
+	    setCfLoading(true);
+	    try {
+	      const status = await apiClient.startCloudflared();
+	      setCfStatus(status);
+	      if (status.publicUrl) showMsg(`Tunnel: ${status.publicUrl}`);
+	      else if (status.error) showErr(status.error);
+	    } catch (e) { showErr(e); }
+	    finally { setCfLoading(false); }
+	  }
+
+	  async function stopTunnel() {
+	    setCfLoading(true);
+	    try {
+	      await apiClient.stopCloudflared();
+	      setCfStatus({ running: false });
+	    } catch (e) { showErr(e); }
+	    finally { setCfLoading(false); }
+	  }
+
+	  const publicUrl = cfStatus.publicUrl || state.cloudflared.publicUrl;
+
+	  return (
+	    <div className="page">
+	      <div className="page-header">
+	        <h2>Local Services</h2>
+	        <div className="page-header-actions">
+	          {cfStatus.running ? (
+	            <button className="btn-danger" onClick={stopTunnel} disabled={cfLoading}>{cfLoading ? "Stopping..." : "Stop Tunnel"}</button>
+	          ) : (
+	            <button className="btn-primary" onClick={startTunnel} disabled={cfLoading}>{cfLoading ? "Starting..." : "Start Cloudflared Tunnel"}</button>
+	          )}
+	          <button className="btn-primary" onClick={() => { setShowForm(true); setCfTestResult({}); }}>+ Add Local Service</button>
+	        </div>
+	      </div>
+
+	      {cfStatus.error && <div className="toast error" style={{ position: "static", marginBottom: 12 }}>{cfStatus.error}</div>}
+	      {cfStatus.missingBinary && cfStatus.installUrl && (
+	        <div className="cloudflared-panel cloudflared-panel-muted" style={{ marginBottom: 12 }}>
+	          <div className="cloudflared-panel-head">
+	            <span className="connection-status-dot fail" />
+	            <strong>Cloudflared not installed</strong>
+	          </div>
+	          <p className="cloudflared-panel-hint">Install Cloudflared, then return here and click Start Cloudflared Tunnel again.</p>
+	          <div className="provider-actions" style={{ marginTop: 8 }}>
+	            <a className="btn-primary" href={cfStatus.installUrl} target="_blank" rel="noreferrer">Download Cloudflared</a>
+	          </div>
+	        </div>
+	      )}
+	      {cfStatus.running && publicUrl && (
+	        <div className="cloudflared-panel">
+	          <div className="cloudflared-panel-head">
+	            <span className="connection-status-dot ok" />
+	            <strong>Cloudflared Tunnel Active</strong>
+	          </div>
+	          <div className="cloudflared-panel-url">
+	            <span>Public URL:</span>
+	            <code>{publicUrl}</code>
+	          </div>
+	          <p className="cloudflared-panel-hint">
+	            Use the public URL to access local services from external devices or tools.
+	            Append <code>/api/proxy/local/:serviceId/v1</code> for a specific service.
+	          </p>
+	        </div>
+	      )}
+	      {!cfStatus.running && (
+	        <div className="cloudflared-panel cloudflared-panel-muted">
+	          <div className="cloudflared-panel-head">
+	            <span className="connection-status-dot idle" />
+	            <strong>Public access is not enabled</strong>
+	          </div>
+	          <p className="cloudflared-panel-hint">Start Cloudflared Tunnel to generate public proxy URLs for local services.</p>
+	        </div>
+	      )}
+
+	      {showForm && (
+	        <div className="form-card">
+	          <h3>Add Local Service</h3>
+	          <div className="form-grid">
+	            <label>Service Name<input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. My Local LLM" /></label>
+	            <label>Base URL
+	              <div className="url-input-row">
+	                <input value={form.baseUrl} onChange={(e) => { setForm({ ...form, baseUrl: e.target.value }); setCfTestResult({}); }} placeholder="http://127.0.0.1:8045/v1" />
+	                <button type="button" onClick={testUrl} disabled={!form.baseUrl.trim() || cfTestResult.testing}>Test</button>
+	              </div>
+	              {cfTestResult.testing && <span className="url-test-msg url-test-msg--testing">Testing...</span>}
+	              {!cfTestResult.testing && cfTestResult.ok !== undefined && (
+	                <span className={`url-test-msg ${cfTestResult.ok ? "url-test-msg--ok" : "url-test-msg--fail"}`}>
+	                  {cfTestResult.ok
+	                    ? `OK ${cfTestResult.status} - ${cfTestResult.latencyMs}ms${cfTestResult.modelNames?.length ? ` - ${cfTestResult.modelNames.length} models` : ""}`
+	                    : `Failed: ${cfTestResult.error ?? `HTTP ${cfTestResult.status}`}`}
+	                </span>
+	              )}
+	            </label>
+	            <label>Type
+	              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+	                <option value="unknown">Unknown</option>
+	                <option value="openai-compatible">OpenAI Compatible</option>
+	                <option value="anthropic-compatible">Anthropic Compatible</option>
+	                <option value="custom">Custom</option>
+	              </select>
+	            </label>
+	            <label>API Key (optional)
+	              <input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder="sk-... or service key" />
+	            </label>
+	            <label>Notes<textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="Optional notes" /></label>
+	          </div>
+	          <div className="form-actions">
+	            <button className="btn-primary" onClick={save}>Save</button>
+	            <button onClick={() => setShowForm(false)}>Cancel</button>
+	          </div>
+	        </div>
+	      )}
+
+	      <div className="provider-list provider-list-compact">
+	        {state.localServices.map((service) => {
+	          const test = serviceTests[service.id];
+	          const publicAccessUrl = publicUrl ? `${publicUrl}/api/proxy/local/${service.id}/v1` : undefined;
+	          return (
+	            <div key={service.id} className="provider-card provider-card-compact">
+	              <div className="provider-summary-top">
+	                <div className="provider-summary-name">
+	                  <strong>{service.name}</strong>
+	                  <span className="provider-protocol provider-local-badge">Local</span>
+	                  <span className="provider-protocol">{service.type}</span>
+	                </div>
+	              </div>
+	              <div className="provider-url provider-summary-base">
+	                <span className={`connection-status-dot ${test?.testing ? "testing" : service.status === "available" ? "ok" : service.status === "unavailable" ? "fail" : "idle"}`} />
+	                <span>{service.baseUrl}</span>
+	              </div>
+	              {test?.testing && <div className="url-test-status url-test-status--testing">Testing...</div>}
+	              {!test?.testing && test?.ok !== undefined && (
+	                <div className={`url-test-status ${test.ok ? "url-test-status--ok" : "url-test-status--fail"}`}>
+	                  {test.ok ? `OK - ${test.latencyMs}ms${test.modelNames?.length ? ` - ${test.modelNames.length} models` : ""}` : `Failed: ${test.error}`}
+	                </div>
+	              )}
+	              {!test?.testing && test?.ok === undefined && service.status === "available" && (
+	                <div className="url-test-status url-test-status--ok">Available - {service.latencyMs}ms</div>
+	              )}
+	              {!test?.testing && test?.ok === undefined && service.status === "unavailable" && (
+	                <div className="url-test-status url-test-status--fail">Unavailable</div>
+	              )}
+	              <div className="provider-stats provider-summary-stats">
+	                {service.latencyMs !== undefined && <span>{service.latencyMs}ms latency</span>}
+	                {service.lastCheckedAt && <span>Last checked: {new Date(service.lastCheckedAt).toLocaleString()}</span>}
+	                {service.hasApiKey && <span>Key: {service.keyMasked ?? "configured"}</span>}
+	              </div>
+	              {publicAccessUrl && (
+	                <div className="local-routing-url" style={{ marginTop: 8 }}>
+	                  <span>Public proxy access:</span>
+	                  <code>{publicAccessUrl}</code>
+	                </div>
+	              )}
+	              <div className="provider-actions" style={{ marginTop: 8 }}>
+	                <button onClick={() => testService(service.id)} disabled={test?.testing}>Test Connection</button>
+	                <button className="btn-danger" onClick={() => remove(service.id)}>Delete</button>
+	              </div>
+	            </div>
+	          );
+	        })}
+	        {state.localServices.length === 0 && !showForm && <p className="empty">No local services configured. Add one to track usage of local API services.</p>}
+	      </div>
+	    </div>
+	  );
+	}
 
 function Usage({ state }: { state: AppState }) {
   const [filter, setFilter] = useState("");
@@ -1840,7 +2138,7 @@ function Usage({ state }: { state: AppState }) {
   );
 }
 
-/* ─── Billing ─── */
+/* 鈹€鈹€鈹€ Billing 鈹€鈹€鈹€ */
 function Billing({ state, setState, showMsg, showErr }: {
   state: AppState; setState: (s: AppState) => void; showMsg: (m: string) => void; showErr: (e: unknown) => void;
 }) {
@@ -1914,7 +2212,7 @@ function Billing({ state, setState, showMsg, showErr }: {
   );
 }
 
-/* ─── UsageTable ─── */
+/* 鈹€鈹€鈹€ UsageTable 鈹€鈹€鈹€ */
 function UsageTable({ events }: { events: UsageEvent[] }) {
   return (
     <div className="table-wrap">
@@ -1957,13 +2255,6 @@ function UsageTable({ events }: { events: UsageEvent[] }) {
     </div>
   );
 }
-
-
-
-
-
-
-
 
 
 

@@ -7,6 +7,13 @@
       "runtimeArgs": ["dist-main/server/server.js"],
       "port": 3210,
       "autoPort": true
+    },
+    {
+      "name": "vite-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--host"],
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

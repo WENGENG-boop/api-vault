@@ -1,6 +1,8 @@
 ﻿export type ApiProtocol = "openai-compatible" | "anthropic-compatible" | "openai-anthropic-compatible";
 export type BalanceMethod = "GET" | "POST";
-export type GatewayType = "openai" | "anthropic" | "auto" | "provider" | "legacy-key" | "public-proxy";
+export type GatewayType = "openai" | "anthropic" | "auto" | "provider" | "legacy-key" | "public-proxy" | "local-service";
+export type LocalServiceStatus = "unknown" | "available" | "unavailable";
+export type LocalServiceProtocol = "openai-compatible" | "anthropic-compatible" | "custom" | "unknown";
 
 export interface BalanceConfig {
   enabled: boolean;
@@ -67,6 +69,9 @@ export interface ProviderSafe {
   createdAt: string;
   updatedAt: string;
   isLocal?: boolean;
+  status?: LocalServiceStatus;
+  latencyMs?: number;
+  lastCheckedAt?: string;
 }
 
 export interface UsageEvent {
@@ -195,6 +200,32 @@ export interface AppState {
   usageRollups: UsageRollup[];
   balanceSnapshots: BalanceSnapshot[];
   totals: DashboardTotals;
+  localServices: LocalService[];
+  cloudflared: CloudflaredStatus;
+}
+
+export interface LocalService {
+  id: string;
+  name: string;
+  baseUrl: string;
+  type: LocalServiceProtocol;
+  status: LocalServiceStatus;
+  latencyMs?: number;
+  lastCheckedAt?: string;
+  publicAccessUrl?: string;
+  notes?: string;
+  hasApiKey?: boolean;
+  keyMasked?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CloudflaredStatus {
+  running: boolean;
+  publicUrl?: string;
+  error?: string;
+  missingBinary?: boolean;
+  installUrl?: string;
 }
 
 export interface BalanceTestResult {
@@ -206,9 +237,6 @@ export interface VaultStatus {
   initialized: boolean;
   unlocked: boolean;
 }
-
-
-
 
 
 

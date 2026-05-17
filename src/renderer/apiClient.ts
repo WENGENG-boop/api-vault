@@ -1,4 +1,4 @@
-﻿import type { AddKeyInput, ApiKeyInput, AppState, BalanceTestResult, ProviderInput } from "../shared/types";
+﻿import type { AddKeyInput, ApiKeyInput, AppState, BalanceTestResult, CloudflaredStatus, LocalService, ProviderInput } from "../shared/types";
 
 import type { ProxyTokenInput } from "../shared/types";
 
@@ -13,6 +13,7 @@ export interface UrlTestResult {
   latencyMs: number;
   error?: string;
   checkedAt: string;
+  modelNames?: string[];
 }
 
 export interface ApiVaultClient {
@@ -33,7 +34,14 @@ export interface ApiVaultClient {
   updateProxyToken: (id: string, input: ProxyTokenInput) => Promise<AppState>;
   deleteProxyToken: (id: string) => Promise<AppState>;
   regenerateProxyToken: (id: string) => Promise<{ secret: string; state: AppState }>;
-  testUrl: (input: { baseUrl: string; protocol?: string; providerId?: string; isLocal?: boolean }) => Promise<UrlTestResult>;
+  testUrl: (input: { baseUrl: string; protocol?: string; providerId?: string; isLocal?: boolean; type?: string; apiKey?: string }) => Promise<UrlTestResult>;
+  getCloudflaredStatus: () => Promise<CloudflaredStatus>;
+  startCloudflared: () => Promise<CloudflaredStatus>;
+  stopCloudflared: () => Promise<CloudflaredStatus>;
+  getLocalServices: () => Promise<LocalService[]>;
+  saveLocalService: (input: Partial<LocalService> & { name: string; baseUrl: string; apiKey?: string }) => Promise<AppState>;
+  deleteLocalService: (id: string) => Promise<AppState>;
+  testLocalService: (id: string) => Promise<UrlTestResult & { serviceStatus?: string }>;
 }
 
 declare global {
@@ -114,8 +122,18 @@ export const apiClient: ApiVaultClient = window.apiVault ?? {
     await copyToClipboard(result.secret);
     return result;
   },
-  testUrl: (input: { baseUrl: string; protocol?: string; providerId?: string; isLocal?: boolean }) =>
-    request<UrlTestResult>("/api/test-url", { method: "POST", body: input })
+  testUrl: (input: { baseUrl: string; protocol?: string; providerId?: string; isLocal?: boolean; type?: string; apiKey?: string }) =>
+    request<UrlTestResult>("/api/test-url", { method: "POST", body: input }),
+  getCloudflaredStatus: () => request<CloudflaredStatus>("/api/cloudflared/status"),
+  startCloudflared: () => request<CloudflaredStatus>("/api/cloudflared/start", { method: "POST" }),
+  stopCloudflared: () => request<CloudflaredStatus>("/api/cloudflared/stop", { method: "POST" }),
+  getLocalServices: () => request<LocalService[]>("/api/local-services"),
+  saveLocalService: async (input) => {
+    const { state } = await request<{ state: AppState }>("/api/local-services", { method: "POST", body: input });
+    return state;
+  },
+  deleteLocalService: (id) => request<AppState>(`/api/local-services/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  testLocalService: (id) => request<UrlTestResult & { serviceStatus?: string }>(`/api/local-services/${encodeURIComponent(id)}/test`, { method: "POST" })
 };
 
 export async function copyTextToClipboard(text: string): Promise<CopyResult> {
@@ -214,4 +232,3 @@ function showManualCopyDialog(text: string): void {
   textarea.focus();
   textarea.select();
 }
-

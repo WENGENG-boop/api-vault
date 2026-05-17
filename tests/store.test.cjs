@@ -73,4 +73,35 @@ test("store reloads disk state so multiple local server processes do not diverge
   }
 });
 
+test("store backfills api key hashes for older vault data on unlock", () => {
+  const { dir, file } = tempVaultPath("api-vault-store-keyhash-");
+  try {
+    const first = new VaultStore(file);
+    first.setup("test-password-123");
+    const added = first.addKeyWithAutoMerge({
+      providerName: "Hash Backfill",
+      keyName: "legacy",
+      protocol: "openai-compatible",
+      baseUrl: "https://vendor.example/v1",
+      currency: "USD",
+      apiKey: "sk-legacy",
+      balanceConfig: { enabled: false }
+    });
+    assert.ok(added.apiKey.id);
+
+    const legacyData = JSON.parse(fs.readFileSync(file, "utf8"));
+    delete legacyData.providers[0].apiKeys[0].keyHash;
+    fs.writeFileSync(file, `${JSON.stringify(legacyData, null, 2)}\n`, "utf8");
+
+    const second = new VaultStore(file);
+    second.unlock("test-password-123");
+    const migrated = JSON.parse(fs.readFileSync(file, "utf8"));
+
+    assert.match(migrated.providers[0].apiKeys[0].keyHash, /^[a-f0-9]{64}$/);
+    assert.equal(JSON.stringify(migrated).includes("sk-legacy"), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 

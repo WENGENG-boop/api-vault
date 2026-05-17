@@ -5,19 +5,15 @@ import type { ApiProtocol, GatewayType, UsageEvent } from "../shared/types";
 import { buildProviderProxyBaseUrl, type ProviderForProxy, type VaultStore } from "./store";
 import { extractRequestModel, extractUsageFromResponse, extractUsageFromSSE } from "./usage";
 import { toAppError } from "./errors";
-
-const HOP_BY_HOP_HEADERS = new Set([
-  "connection",
-  "content-length",
-  "host",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade"
-]);
+import {
+  DEFAULT_BODY_LIMIT_BYTES,
+  isHopByHopHeader,
+  proxyTimeoutMs,
+  readRequestBody,
+  shouldSendBody,
+  toArrayBuffer,
+  toResponseHeaders
+} from "./httpUtils";
 
 export class ProxyServer {
   private server?: Server;
@@ -151,6 +147,7 @@ export class ProxyServer {
     }
 
     const body = await readRequestBody(req);
+    const parsedBody = parseJsonObject(body);
     const normalizedSuffixPath = normalizeProxySuffixPath(provider.baseUrl, suffixPath);
     const upstreamUrl = buildUpstreamUrl(provider.baseUrl, normalizedSuffixPath, incomingUrl.search);
     const headers = buildUpstreamHeaders(req.headers, effectiveProtocol, provider.apiKey);
@@ -158,9 +155,9 @@ export class ProxyServer {
     const startedAt = new Date(started).toISOString();
     this.store.markApiKeyUsed(provider.id, provider.keyId, startedAt);
 
-    const isStreamRequest = body.includes(Buffer.from("\"stream\":true")) || body.includes(Buffer.from("\"stream\": true"));
+    const isStreamRequest = parsedBody?.stream === true;
     const finalBody = isStreamRequest && effectiveProtocol === "openai-compatible"
-      ? injectStreamOptions(body)
+      ? injectStreamOptions(body, parsedBody)
       : body;
     const requestModel = extractRequestModel(finalBody);
 
@@ -168,7 +165,8 @@ export class ProxyServer {
       const upstream = await fetch(upstreamUrl, {
         method: req.method,
         headers,
-        body: shouldSendBody(req.method) ? toArrayBuffer(finalBody) : undefined
+        body: shouldSendBody(req.method) ? toArrayBuffer(finalBody) : undefined,
+        signal: AbortSignal.timeout(proxyTimeoutMs())
       });
 
       const responseHeaders = toResponseHeaders(upstream.headers);
@@ -330,8 +328,9 @@ export class ProxyServer {
     let upstreamModel: string | undefined;
     try {
       body = await readRequestBody(req, maxProxyBodyBytes());
+      const parsedBody = parseJsonObject(body);
       requestModel = extractRequestModel(body);
-      const isStreamRequest = body.includes(Buffer.from("\"stream\":true")) || body.includes(Buffer.from("\"stream\": true"));
+      const isStreamRequest = parsedBody?.stream === true;
       const explicitProviderId = firstHeader(req.headers["x-provider-id"])?.trim();
       if (suffixPath === "/models" || suffixPath === "/models/") {
         const token = this.store.getProxyTokenForSecret(proxyTokenSecret);
@@ -384,7 +383,8 @@ export class ProxyServer {
       const upstream = await fetch(upstreamUrl, {
         method: req.method,
         headers,
-        body: shouldSendBody(req.method) ? toArrayBuffer(finalBody) : undefined
+        body: shouldSendBody(req.method) ? toArrayBuffer(finalBody) : undefined,
+        signal: AbortSignal.timeout(proxyTimeoutMs())
       });
 
       const responseHeaders = toResponseHeaders(upstream.headers);
@@ -465,6 +465,7 @@ class ProxyRateLimiter {
   consume(id: string, perMinute: number, perDay: number): { ok: true } | { ok: false; message: string } {
     const now = Date.now();
     const minuteWindow = Math.floor(now / 60_000);
+    this.cleanup(minuteWindow, new Date(now).toISOString().slice(0, 10));
     const minute = this.minute.get(id);
     const nextMinute = minute?.window === minuteWindow ? { window: minuteWindow, count: minute.count + 1 } : { window: minuteWindow, count: 1 };
     if (nextMinute.count > perMinute) return { ok: false, message: "Proxy token minute limit exceeded" };
@@ -475,6 +476,15 @@ class ProxyRateLimiter {
     this.minute.set(id, nextMinute);
     this.day.set(id, nextDay);
     return { ok: true };
+  }
+
+  private cleanup(currentMinuteWindow: number, currentDay: string): void {
+    for (const [id, value] of this.minute) {
+      if (value.window < currentMinuteWindow - 1) this.minute.delete(id);
+    }
+    for (const [id, value] of this.day) {
+      if (value.day !== currentDay) this.day.delete(id);
+    }
   }
 }
 
@@ -631,8 +641,8 @@ export function buildUpstreamHeaders(
   const headers = new Headers();
   for (const [name, value] of Object.entries(incoming)) {
     const lower = name.toLowerCase();
-    if (HOP_BY_HOP_HEADERS.has(lower)) continue;
-    if (lower === "authorization" || lower === "x-api-key") continue;
+    if (isHopByHopHeader(lower)) continue;
+    if (shouldDropForwardedHeader(lower)) continue;
     if (Array.isArray(value)) {
       for (const item of value) headers.append(name, item);
     } else if (value !== undefined) {
@@ -692,30 +702,9 @@ function safeAppendUsage(store: VaultStore, event: UsageEvent): void {
   }
 }
 
-function shouldSendBody(method?: string): boolean {
-  const upper = method?.toUpperCase();
-  return upper !== "GET" && upper !== "HEAD";
-}
-
-function toArrayBuffer(buffer: Buffer): ArrayBuffer {
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-}
-
-async function readRequestBody(req: IncomingMessage, maxBytes = 5_000_000): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buffer.length;
-    if (total > maxBytes) throw new Error("Request body is too large");
-    chunks.push(buffer);
-  }
-  return Buffer.concat(chunks);
-}
-
 function maxProxyBodyBytes(): number {
-  const value = Number(process.env.API_VAULT_MAX_BODY_BYTES || 5_000_000);
-  return Number.isFinite(value) && value > 0 ? value : 5_000_000;
+  const value = Number(process.env.API_VAULT_MAX_BODY_BYTES || DEFAULT_BODY_LIMIT_BYTES);
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_BODY_LIMIT_BYTES;
 }
 
 function replaceRequestModel(body: Buffer, model: string | undefined): Buffer {
@@ -730,26 +719,36 @@ function replaceRequestModel(body: Buffer, model: string | undefined): Buffer {
   return body;
 }
 
-function toResponseHeaders(headers: Headers): Record<string, string> {
-  const result: Record<string, string> = {};
-  headers.forEach((value, name) => {
-    if (!HOP_BY_HOP_HEADERS.has(name.toLowerCase())) {
-      result[name] = value;
-    }
-  });
-  return result;
-}
-
-function injectStreamOptions(body: Buffer): Buffer {
+function injectStreamOptions(body: Buffer, parsed?: Record<string, unknown>): Buffer {
   try {
-    const parsed = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
-    if (!parsed.stream_options) {
-      parsed.stream_options = { include_usage: true };
+    const object = parsed ?? JSON.parse(body.toString("utf8")) as Record<string, unknown>;
+    if (!object.stream_options) {
+      object.stream_options = { include_usage: true };
     }
-    return Buffer.from(JSON.stringify(parsed), "utf8");
+    return Buffer.from(JSON.stringify(object), "utf8");
   } catch {
     return body;
   }
+}
+
+function parseJsonObject(body: Buffer): Record<string, unknown> | undefined {
+  if (body.length === 0) return undefined;
+  try {
+    const parsed = JSON.parse(body.toString("utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function shouldDropForwardedHeader(lower: string): boolean {
+  if (lower === "authorization" || lower === "x-api-key" || lower === "api-key" || lower.endsWith("api-key")) return true;
+  if (lower === "cookie" || lower === "set-cookie") return true;
+  if (lower.startsWith("proxy-")) return true;
+  if (lower.includes("authorization") || lower.includes("token") || lower.includes("secret")) return true;
+  return false;
 }
 
 
