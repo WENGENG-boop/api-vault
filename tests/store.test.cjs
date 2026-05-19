@@ -54,7 +54,7 @@ test("store keeps recent 1000 usage events and rolls older calls into week and m
   }
 });
 
-test("store reloads disk state so multiple local server processes do not diverge", () => {
+test("store reloads disk state after pending usage is flushed by a state read", () => {
   const { dir, file } = tempVaultPath("api-vault-store-reload-");
   try {
     const first = new VaultStore(file);
@@ -64,10 +64,57 @@ test("store reloads disk state so multiple local server processes do not diverge
 
     assert.equal(second.getState().totals.totalCalls, 0);
     first.appendUsage(usageEvent(1, "2026-01-01T00:00:00.000Z"));
+    assert.equal(first.getState().totals.totalCalls, 1);
 
     const state = second.getState();
     assert.equal(state.totals.totalCalls, 1);
     assert.equal(state.usageEvents[0].id, "event-1");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("store batches usage and last-used writes until flush", () => {
+  const { dir, file } = tempVaultPath("api-vault-store-buffer-");
+  try {
+    const store = new VaultStore(file);
+    store.setup("test-password-123");
+    const added = store.addKeyWithAutoMerge({
+      providerName: "Buffered Provider",
+      keyName: "buffered",
+      protocol: "openai-compatible",
+      baseUrl: "https://buffered.example/v1",
+      currency: "USD",
+      apiKey: "sk-buffered",
+      balanceConfig: { enabled: false }
+    });
+    const token = store.createProxyToken({
+      name: "buffered token",
+      allowedProviderIds: [added.provider.id],
+      allowedModels: [],
+      allowStreaming: true,
+      requestsPerMinute: 60,
+      requestsPerDay: 1000
+    }).token;
+
+    store.appendUsage(usageEvent(2, "2026-01-01T00:02:00.000Z"));
+    store.markApiKeyUsed(added.provider.id, added.apiKey.id, "2026-01-01T00:02:01.000Z");
+    store.markProxyTokenUsed(token.id, "2026-01-01T00:02:02.000Z");
+
+    let persisted = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.equal(persisted.usageEvents.length, 0);
+    assert.equal(persisted.providers[0].apiKeys[0].lastUsedAt, undefined);
+    assert.equal(persisted.proxyTokens[0].lastUsedAt, undefined);
+
+    const state = store.getState();
+    assert.equal(state.usageEvents.length, 1);
+    assert.equal(state.providers[0].apiKeys[0].lastUsedAt, "2026-01-01T00:02:01.000Z");
+    assert.equal(state.proxyTokens[0].lastUsedAt, "2026-01-01T00:02:02.000Z");
+
+    persisted = JSON.parse(fs.readFileSync(file, "utf8"));
+    assert.equal(persisted.usageEvents.length, 1);
+    assert.equal(persisted.providers[0].apiKeys[0].lastUsedAt, "2026-01-01T00:02:01.000Z");
+    assert.equal(persisted.proxyTokens[0].lastUsedAt, "2026-01-01T00:02:02.000Z");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

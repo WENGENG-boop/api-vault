@@ -237,6 +237,3 @@ export interface VaultStatus {
   initialized: boolean;
   unlocked: boolean;
 }
-
-
-

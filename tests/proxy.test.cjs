@@ -65,7 +65,8 @@ test("injects OpenAI-compatible auth header", () => {
       host: "local",
       "proxy-authorization": "Basic secret",
       "x-provider-api-key": "leaky",
-      "x-client-token": "leaky-token"
+      "x-client-token": "business-token",
+      "x-idempotency-token": "idem-123"
     },
     "openai-compatible",
     "sk-real"
@@ -76,7 +77,8 @@ test("injects OpenAI-compatible auth header", () => {
   assert.equal(headers.get("cookie"), null);
   assert.equal(headers.get("proxy-authorization"), null);
   assert.equal(headers.get("x-provider-api-key"), null);
-  assert.equal(headers.get("x-client-token"), null);
+  assert.equal(headers.get("x-client-token"), "business-token");
+  assert.equal(headers.get("x-idempotency-token"), "idem-123");
 });
 
 test("injects Anthropic-compatible auth header", () => {

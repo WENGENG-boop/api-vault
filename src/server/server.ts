@@ -39,7 +39,9 @@ function startAutoSync(store: VaultStore) {
       const full = store.getBalanceProvider(provider.id);
       syncBalance(full).then((result) => {
         store.appendBalance(result.snapshot);
-      }).catch(() => {});
+      }).catch((error) => {
+        console.warn(`Auto-sync balance failed for ${provider.name} (${provider.id}):`, (error as Error).message ?? error);
+      });
     }
   }, 60_000);
 }
@@ -119,17 +121,27 @@ async function handleApi(
 
   if (method === "POST" && url.pathname === "/api/vault/setup") {
     enforceAuthLimiter(req);
-    const body = await readJsonBody<{ password: string }>(req);
-    store.setup(body.password);
-    sendJson(res, 200, getState());
+    try {
+      const body = await readJsonBody<{ password: string }>(req);
+      store.setup(body.password);
+      sendJson(res, 200, getState());
+    } catch (error) {
+      recordAuthFailure(req);
+      throw error;
+    }
     return;
   }
 
   if (method === "POST" && url.pathname === "/api/vault/unlock") {
     enforceAuthLimiter(req);
-    const body = await readJsonBody<{ password: string }>(req);
-    store.unlock(body.password);
-    sendJson(res, 200, getState());
+    try {
+      const body = await readJsonBody<{ password: string }>(req);
+      store.unlock(body.password);
+      sendJson(res, 200, getState());
+    } catch (error) {
+      recordAuthFailure(req);
+      throw error;
+    }
     return;
   }
 
@@ -156,6 +168,21 @@ async function handleApi(
 
   if (proxyTokenMatch && method === "DELETE") {
     store.deleteProxyToken(decodeURIComponent(proxyTokenMatch[1]));
+    sendJson(res, 200, getState());
+    return;
+  }
+
+  const proxyTokenSecretMatch = url.pathname.match(/^\/api\/proxy-tokens\/([^/]+)\/secret$/);
+  if (proxyTokenSecretMatch && method === "GET") {
+    const secret = store.getProxyTokenPlaintext(decodeURIComponent(proxyTokenSecretMatch[1]));
+    sendJson(res, 200, { secret });
+    return;
+  }
+
+  const proxyTokenSecretSetMatch = url.pathname.match(/^\/api\/proxy-tokens\/([^/]+)\/secret$/);
+  if (proxyTokenSecretSetMatch && method === "POST") {
+    const body = await readJsonBody<{ secret: string }>(req);
+    store.setProxyTokenPlaintext(decodeURIComponent(proxyTokenSecretSetMatch[1]), body.secret);
     sendJson(res, 200, getState());
     return;
   }
@@ -275,6 +302,9 @@ async function handleApi(
 
   if (method === "POST" && url.pathname === "/api/test-url") {
     const body = await readJsonBody<{ baseUrl?: string; protocol?: string; providerId?: string; isLocal?: boolean; type?: LocalServiceProtocol; apiKey?: string }>(req);
+    if (body.providerId && !body.apiKey) {
+      body.apiKey = store.getProviderFirstApiKeyPlaintext(body.providerId);
+    }
     const result = await testUpstreamUrl(store, body);
     if (body.providerId) {
       store.updateProviderConnectionStatus(body.providerId, result.ok ? "available" : "unavailable", result.latencyMs, result.checkedAt);
@@ -370,6 +400,12 @@ class SimpleLimiter {
   private readonly attempts = new Map<string, { window: number; count: number }>();
   constructor(private readonly limit: number, private readonly windowMs: number) {}
 
+  allow(key: string): boolean {
+    const window = Math.floor(Date.now() / this.windowMs);
+    const current = this.attempts.get(key);
+    return !current || current.window !== window || current.count < this.limit;
+  }
+
   consume(key: string): boolean {
     const window = Math.floor(Date.now() / this.windowMs);
     const current = this.attempts.get(key);
@@ -382,10 +418,18 @@ class SimpleLimiter {
 authFailures = new SimpleLimiter(12, 60_000);
 
 function enforceAuthLimiter(req: IncomingMessage): void {
-  const key = req.socket.remoteAddress ?? "local";
-  if (!authFailures.consume(key)) {
+  const key = authLimiterKey(req);
+  if (!authFailures.allow(key)) {
     throw new AppError("Too many authentication attempts. Try again later.", 429, "auth_rate_limited");
   }
+}
+
+function recordAuthFailure(req: IncomingMessage): void {
+  authFailures.consume(authLimiterKey(req));
+}
+
+function authLimiterKey(req: IncomingMessage): string {
+  return `${req.socket.remoteAddress ?? "local"}:${req.headers.host ?? ""}`;
 }
 
 async function testUpstreamUrl(
@@ -435,21 +479,22 @@ async function testUpstreamUrl(
 
   const isLocal = Boolean(body.isLocal);
   const timeoutMs = isLocal ? 5000 : 10000;
-  const started = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    let bestStatus: number | undefined;
-    let bestLatencyMs = 0;
-    let bestError: string | undefined;
-    for (const { target, headers: attemptHeaders } of probeAttempts) {
-      const response = await fetch(target, { method: "GET", headers: attemptHeaders, signal: controller.signal });
-      const latencyMs = Date.now() - started;
+  let bestStatus: number | undefined;
+  let bestLatencyMs = 0;
+  let bestError: string | undefined;
+  for (const { target, headers: attemptHeaders } of probeAttempts) {
+    const attemptStarted = Date.now();
+    try {
+      const response = await fetch(target, {
+        method: "GET",
+        headers: attemptHeaders,
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      const latencyMs = Date.now() - attemptStarted;
       const ok = shouldProbeModels
         ? response.status < 500 && response.status !== 404
         : response.status > 0 && response.status < 500;
       if (ok) {
-        clearTimeout(timeout);
         let modelNames: string[] | undefined;
         if (response.status < 400) {
           try {
@@ -474,22 +519,24 @@ async function testUpstreamUrl(
         bestLatencyMs = latencyMs;
         bestError = `HTTP ${response.status}`;
       }
+    } catch (error) {
+      const latencyMs = Date.now() - attemptStarted;
+      const message = (error as Error).name === "AbortError" || (error as Error).name === "TimeoutError"
+        ? `Timeout (${timeoutMs / 1000}s)`
+        : String((error as Error).message ?? error);
+      if (!bestError) {
+        bestLatencyMs = latencyMs;
+        bestError = message;
+      }
     }
-
-    clearTimeout(timeout);
-    return {
-      ok: false,
-      status: bestStatus,
-      latencyMs: bestLatencyMs,
-      error: bestError ?? "Connection failed",
-      checkedAt: new Date().toISOString()
-    };
-  } catch (error) {
-    clearTimeout(timeout);
-    const latencyMs = Date.now() - started;
-    const message = (error as Error).name === "AbortError" ? `Timeout (${timeoutMs / 1000}s)` : String((error as Error).message ?? error);
-    return { ok: false, latencyMs, error: message, checkedAt: new Date().toISOString() };
   }
+  return {
+    ok: false,
+    status: bestStatus,
+    latencyMs: bestLatencyMs,
+    error: bestError ?? "Connection failed",
+    checkedAt: new Date().toISOString()
+  };
 }
 
 async function handleLocalServiceProxy(
@@ -622,7 +669,7 @@ async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
     throw new AppError((error as Error).message, 413, "payload_too_large");
   }
   const text = buffer.toString("utf8");
-  if (!text) return {} as T;
+  if (!text) throw new AppError("Request body is required", 400, "body_required");
   try {
     return JSON.parse(text) as T;
   } catch {

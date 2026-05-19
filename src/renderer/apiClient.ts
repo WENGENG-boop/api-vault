@@ -33,6 +33,7 @@ export interface ApiVaultClient {
   createProxyToken: (input: ProxyTokenInput) => Promise<{ secret: string; state: AppState }>;
   updateProxyToken: (id: string, input: ProxyTokenInput) => Promise<AppState>;
   deleteProxyToken: (id: string) => Promise<AppState>;
+  revealProxyToken: (id: string) => Promise<{ secret: string }>;
   regenerateProxyToken: (id: string) => Promise<{ secret: string; state: AppState }>;
   testUrl: (input: { baseUrl: string; protocol?: string; providerId?: string; isLocal?: boolean; type?: string; apiKey?: string }) => Promise<UrlTestResult>;
   getCloudflaredStatus: () => Promise<CloudflaredStatus>;
@@ -107,7 +108,6 @@ export const apiClient: ApiVaultClient = window.apiVault ?? {
       method: "POST",
       body: input
     });
-    await copyToClipboard(result.secret);
     return result;
   },
   updateProxyToken: (id: string, input: ProxyTokenInput) => request<AppState>(`/api/proxy-tokens/${encodeURIComponent(id)}`, {
@@ -115,11 +115,11 @@ export const apiClient: ApiVaultClient = window.apiVault ?? {
     body: input
   }),
   deleteProxyToken: (id: string) => request<AppState>(`/api/proxy-tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  revealProxyToken: (id: string) => request<{ secret: string }>(`/api/proxy-tokens/${encodeURIComponent(id)}/secret`),
   regenerateProxyToken: async (id: string) => {
     const result = await request<{ secret: string; state: AppState }>(`/api/proxy-tokens/${encodeURIComponent(id)}/regenerate`, {
       method: "POST"
     });
-    await copyToClipboard(result.secret);
     return result;
   },
   testUrl: (input: { baseUrl: string; protocol?: string; providerId?: string; isLocal?: boolean; type?: string; apiKey?: string }) =>

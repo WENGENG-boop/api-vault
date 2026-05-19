@@ -64,6 +64,7 @@ interface ProxyTokenRecord {
   id: string;
   name: string;
   tokenHash: string;
+  tokenSecret?: EncryptedText;
   tokenMasked: string;
   enabled: boolean;
   allowedProviderIds: string[];
@@ -153,6 +154,8 @@ class JsonFileStorageAdapter implements StorageAdapter {
 
 const RECENT_USAGE_LIMIT = 1000;
 const BALANCE_SNAPSHOT_LIMIT = 1000;
+const USAGE_FLUSH_INTERVAL_MS = 5000;
+const USAGE_FLUSH_BATCH_SIZE = 50;
 
 const defaultBalanceConfig: BalanceConfig = {
   enabled: false,
@@ -171,6 +174,10 @@ export class VaultStore {
   private readonly storage: StorageAdapter;
   private data: PersistedData;
   private masterKey?: Buffer;
+  private pendingUsageEvents: UsageEvent[] = [];
+  private pendingApiKeyUsed = new Map<string, string>();
+  private pendingProxyTokenUsed = new Map<string, string>();
+  private flushTimer?: NodeJS.Timeout;
 
   constructor(filePath = join(process.cwd(), ".api-vault", "vault.json")) {
     this.filePath = filePath;
@@ -288,6 +295,18 @@ export class VaultStore {
     provider.apiKeys = provider.apiKeys.filter((k) => k.id !== keyId);
     provider.updatedAt = new Date().toISOString();
     this.save();
+  }
+
+  getProviderFirstApiKeyPlaintext(providerId: string): string | undefined {
+    try {
+      const masterKey = this.requireKey();
+      this.reloadFromDisk();
+      const provider = this.data.providers.find((p) => p.id === providerId);
+      if (!provider || provider.apiKeys.length === 0) return undefined;
+      return decryptString(masterKey, provider.apiKeys[0].apiKey);
+    } catch {
+      return undefined;
+    }
   }
 
   getApiKeyPlaintext(providerId: string, keyId: string, kind: "api" | "query" = "api"): string {
@@ -431,7 +450,7 @@ export class VaultStore {
   }
 
   createProxyToken(input: ProxyTokenInput): { token: ProxyTokenSafe; secret: string } {
-    this.requireKey();
+    const key = this.requireKey();
     this.reloadFromDisk();
     const now = new Date().toISOString();
     const secret = generateProxyTokenSecret();
@@ -439,6 +458,7 @@ export class VaultStore {
       id: randomUUID(),
       name: normalizeProxyTokenName(input.name),
       tokenHash: hashProxyToken(secret),
+      tokenSecret: encryptString(key, secret),
       tokenMasked: maskProxyToken(secret),
       enabled: input.enabled ?? true,
       allowedProviderIds: [...new Set(input.allowedProviderIds ?? [])],
@@ -481,16 +501,43 @@ export class VaultStore {
   }
 
   regenerateProxyToken(id: string): { token: ProxyTokenSafe; secret: string } {
-    this.requireKey();
+    const key = this.requireKey();
     this.reloadFromDisk();
     const record = this.data.proxyTokens.find((token) => token.id === id);
     if (!record) throw notFound("Proxy token not found", "proxy_token_not_found");
     const secret = generateProxyTokenSecret();
     record.tokenHash = hashProxyToken(secret);
+    record.tokenSecret = encryptString(key, secret);
     record.tokenMasked = maskProxyToken(secret);
     record.updatedAt = new Date().toISOString();
     this.save();
     return { token: this.safeProxyToken(record), secret };
+  }
+
+  getProxyTokenPlaintext(id: string): string {
+    const key = this.requireKey();
+    this.reloadFromDisk();
+    const record = this.data.proxyTokens.find((token) => token.id === id);
+    if (!record) throw notFound("Proxy token not found", "proxy_token_not_found");
+    if (!record.tokenSecret) {
+      throw notFound("This proxy token was created before encrypted reveal support. Regenerate it once to enable Show Key.", "proxy_token_secret_not_stored");
+    }
+    return decryptString(key, record.tokenSecret);
+  }
+
+  setProxyTokenPlaintext(id: string, secret: string): ProxyTokenSafe {
+    const key = this.requireKey();
+    this.reloadFromDisk();
+    const record = this.data.proxyTokens.find((token) => token.id === id);
+    if (!record) throw notFound("Proxy token not found", "proxy_token_not_found");
+    const trimmed = secret.trim();
+    if (!trimmed.startsWith("proxy_")) throw badRequest("Proxy token must start with proxy_", "invalid_proxy_token");
+    record.tokenHash = hashProxyToken(trimmed);
+    record.tokenSecret = encryptString(key, trimmed);
+    record.tokenMasked = maskProxyToken(trimmed);
+    record.updatedAt = new Date().toISOString();
+    this.save();
+    return this.safeProxyToken(record);
   }
 
   getProxyTokenForSecret(secret: string): ProxyTokenForUse {
@@ -503,11 +550,9 @@ export class VaultStore {
   }
 
   markProxyTokenUsed(id: string, when: string): void {
-    this.reloadFromDisk();
-    const record = this.data.proxyTokens.find((token) => token.id === id);
-    if (!record) return;
-    record.lastUsedAt = when;
-    this.save();
+    this.applyProxyTokenUsed(this.data, id, when);
+    this.rememberLatest(this.pendingProxyTokenUsed, id, when);
+    this.scheduleUsageFlush();
   }
 
   resolvePublicProxy(secret: string, model: string | undefined, explicitProviderId: string | undefined, stream: boolean): PublicProxyResolution {
@@ -555,13 +600,10 @@ export class VaultStore {
   }
 
   markApiKeyUsed(providerId: string, keyId: string, when: string): void {
-    this.reloadFromDisk();
-    const provider = this.data.providers.find((p) => p.id === providerId);
-    if (!provider) return;
-    const record = provider.apiKeys.find((k) => k.id === keyId);
-    if (!record) return;
-    record.lastUsedAt = when;
-    this.save();
+    const pendingKey = `${providerId}:${keyId}`;
+    this.applyApiKeyUsed(this.data, providerId, keyId, when);
+    this.rememberLatest(this.pendingApiKeyUsed, pendingKey, when);
+    this.scheduleUsageFlush();
   }
 
   findProviderByHostAndProtocol(host: string, protocol: ApiProtocol): ProviderRecord | undefined {
@@ -637,11 +679,16 @@ export class VaultStore {
   }
 
   appendUsage(event: UsageEvent): void {
-    this.reloadFromDisk();
     if (this.data.usageEvents.some((item) => item.id === event.id)) return;
+    if (this.pendingUsageEvents.some((item) => item.id === event.id)) return;
+    this.pendingUsageEvents.push(event);
     this.data.usageEvents.unshift(event);
     this.compactUsage();
-    this.save();
+    if (this.pendingUsageEvents.length >= USAGE_FLUSH_BATCH_SIZE) {
+      this.flushPendingWrites();
+      return;
+    }
+    this.scheduleUsageFlush();
   }
 
   appendBalance(snapshot: BalanceSnapshot): void {
@@ -759,11 +806,81 @@ export class VaultStore {
   }
 
   private reloadFromDisk(): void {
+    this.flushPendingWrites();
     this.data = this.load();
   }
 
   private save(): void {
     this.storage.write(this.data);
+  }
+
+  private scheduleUsageFlush(): void {
+    if (this.flushTimer) return;
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = undefined;
+      this.flushPendingWrites();
+    }, USAGE_FLUSH_INTERVAL_MS);
+    this.flushTimer.unref?.();
+  }
+
+  private flushPendingWrites(): void {
+    if (!this.hasPendingWrites()) return;
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = undefined;
+    }
+    const pendingUsage = this.pendingUsageEvents;
+    const pendingApiKeyUsed = new Map(this.pendingApiKeyUsed);
+    const pendingProxyTokenUsed = new Map(this.pendingProxyTokenUsed);
+    this.pendingUsageEvents = [];
+    this.pendingApiKeyUsed.clear();
+    this.pendingProxyTokenUsed.clear();
+
+    this.data = this.load();
+    this.applyPendingUsage(this.data, pendingUsage);
+    for (const [key, when] of pendingApiKeyUsed) {
+      const separator = key.indexOf(":");
+      if (separator === -1) continue;
+      this.applyApiKeyUsed(this.data, key.slice(0, separator), key.slice(separator + 1), when);
+    }
+    for (const [id, when] of pendingProxyTokenUsed) {
+      this.applyProxyTokenUsed(this.data, id, when);
+    }
+    this.compactUsage();
+    this.save();
+  }
+
+  private hasPendingWrites(): boolean {
+    return this.pendingUsageEvents.length > 0 ||
+      this.pendingApiKeyUsed.size > 0 ||
+      this.pendingProxyTokenUsed.size > 0;
+  }
+
+  private applyPendingUsage(data: PersistedData, events: UsageEvent[]): void {
+    const existingIds = new Set(data.usageEvents.map((event) => event.id));
+    for (const event of events) {
+      if (existingIds.has(event.id)) continue;
+      data.usageEvents.unshift(event);
+      existingIds.add(event.id);
+    }
+  }
+
+  private applyApiKeyUsed(data: PersistedData, providerId: string, keyId: string, when: string): void {
+    const provider = data.providers.find((p) => p.id === providerId);
+    const record = provider?.apiKeys.find((k) => k.id === keyId);
+    if (!record) return;
+    if (!record.lastUsedAt || record.lastUsedAt < when) record.lastUsedAt = when;
+  }
+
+  private applyProxyTokenUsed(data: PersistedData, id: string, when: string): void {
+    const record = data.proxyTokens.find((token) => token.id === id);
+    if (!record) return;
+    if (!record.lastUsedAt || record.lastUsedAt < when) record.lastUsedAt = when;
+  }
+
+  private rememberLatest(target: Map<string, string>, key: string, when: string): void {
+    const current = target.get(key);
+    if (!current || current < when) target.set(key, when);
   }
 
   private requireKey(): Buffer {
@@ -1012,10 +1129,14 @@ function normalizeData(data: RawPersistedData): PersistedData {
 
 function migrateProxyToken(raw: any): ProxyTokenRecord {
   const now = new Date().toISOString();
+  const tokenSecret = raw.tokenSecret && typeof raw.tokenSecret === "object" && typeof raw.tokenSecret.ciphertext === "string"
+    ? raw.tokenSecret as EncryptedText
+    : undefined;
   return {
     id: raw.id || randomUUID(),
     name: raw.name || "Proxy token",
     tokenHash: raw.tokenHash || "",
+    tokenSecret,
     tokenMasked: raw.tokenMasked || "proxy_****",
     enabled: raw.enabled !== false,
     allowedProviderIds: Array.isArray(raw.allowedProviderIds) ? raw.allowedProviderIds.filter((item: unknown) => typeof item === "string") : [],

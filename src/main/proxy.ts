@@ -237,8 +237,8 @@ export class ProxyServer {
           safeAppendUsage(this.store, {
             ...baseUsageEvent({
               provider,
-                gatewayType,
-                gatewayBaseUrl,
+              gatewayType,
+              gatewayBaseUrl,
               req,
               path: normalizedSuffixPath,
               status: 502,
@@ -268,8 +268,8 @@ export class ProxyServer {
       safeAppendUsage(this.store, {
         ...baseUsageEvent({
           provider,
-                gatewayType,
-                gatewayBaseUrl,
+          gatewayType,
+          gatewayBaseUrl,
           req,
           path: normalizedSuffixPath,
           status: upstream.status,
@@ -295,8 +295,8 @@ export class ProxyServer {
       safeAppendUsage(this.store, {
         ...baseUsageEvent({
           provider,
-                gatewayType,
-                gatewayBaseUrl,
+          gatewayType,
+          gatewayBaseUrl,
           req,
           path: normalizedSuffixPath,
           status: 502,
@@ -315,6 +315,19 @@ export class ProxyServer {
     const startedAt = new Date(started).toISOString();
     const endpoint = `/proxy/v1${suffixPath}`;
     const proxyTokenSecret = extractBearerToken(req.headers);
+    const isModelsPath = suffixPath === "/models" || suffixPath === "/models/" || suffixPath === "/v1/models" || suffixPath === "/v1/models/";
+    if (!proxyTokenSecret?.startsWith("proxy_") && isModelsPath) {
+      const state = this.store.getState();
+      const models = state.proxyTokens
+        .filter((token) => token.enabled)
+        .flatMap((token) => token.allowedModels.map((rule) => rule.publicModel))
+        .filter((model, index, list) => model && list.indexOf(model) === index);
+      writeJson(res, 200, {
+        object: "list",
+        data: models.map((id) => ({ id, object: "model", owned_by: "api-vault" }))
+      });
+      return;
+    }
     if (!proxyTokenSecret?.startsWith("proxy_")) {
       writeJson(res, 401, { error: "Missing proxy token. Send Authorization: Bearer proxy_xxx", code: "proxy_token_required" });
       return;
@@ -332,7 +345,7 @@ export class ProxyServer {
       requestModel = extractRequestModel(body);
       const isStreamRequest = parsedBody?.stream === true;
       const explicitProviderId = firstHeader(req.headers["x-provider-id"])?.trim();
-      if (suffixPath === "/models" || suffixPath === "/models/") {
+      if (isModelsPath) {
         const token = this.store.getProxyTokenForSecret(proxyTokenSecret);
         proxyTokenId = token.id;
         proxyTokenName = token.name;
@@ -375,7 +388,7 @@ export class ProxyServer {
       const finalBody = replaceRequestModel(body, upstreamModel);
       const normalizedSuffixPath = normalizeProxySuffixPath(provider.baseUrl, suffixPath);
       const upstreamUrl = buildUpstreamUrl(provider.baseUrl, normalizedSuffixPath, incomingUrl.search);
-      const protocol = provider.protocol === "anthropic-compatible" ? "anthropic-compatible" : "openai-compatible";
+      const protocol = effectiveProtocolForProvider(provider.protocol, req.headers, suffixPath);
       const headers = buildUpstreamHeaders(req.headers, protocol, provider.apiKey);
       this.store.markApiKeyUsed(provider.id, provider.keyId, startedAt);
       this.store.markProxyTokenUsed(resolution.token.id, startedAt);
@@ -650,16 +663,17 @@ export function buildUpstreamHeaders(
     }
   }
 
-  if (protocol === "anthropic-compatible") {
-    headers.set("x-api-key", apiKey);
-    if (!headers.has("anthropic-version")) {
-      headers.set("anthropic-version", "2023-06-01");
-    }
+    if (protocol === "anthropic-compatible") {
+      headers.set("x-api-key", apiKey);
+      if (!headers.has("anthropic-version")) {
+        headers.set("anthropic-version", "2023-06-01");
+      }
   } else {
-    headers.set("authorization", `Bearer ${apiKey}`);
+      headers.set("authorization", `Bearer ${apiKey}`);
+    }
+    headers.set("accept-encoding", "identity");
+    return headers;
   }
-  return headers;
-}
 
 function baseUsageEvent(args: {
   provider: ProviderForProxy;
@@ -744,10 +758,16 @@ function parseJsonObject(body: Buffer): Record<string, unknown> | undefined {
 }
 
 function shouldDropForwardedHeader(lower: string): boolean {
-  if (lower === "authorization" || lower === "x-api-key" || lower === "api-key" || lower.endsWith("api-key")) return true;
-  if (lower === "cookie" || lower === "set-cookie") return true;
+  const credentialHeaders = new Set([
+    "authorization",
+    "x-api-key",
+    "api-key",
+    "x-provider-api-key",
+    "cookie",
+    "set-cookie"
+  ]);
+  if (credentialHeaders.has(lower)) return true;
   if (lower.startsWith("proxy-")) return true;
-  if (lower.includes("authorization") || lower.includes("token") || lower.includes("secret")) return true;
   return false;
 }
 

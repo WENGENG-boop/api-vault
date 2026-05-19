@@ -269,6 +269,14 @@ test("HTTP API returns specific status codes for invalid inputs", async () => {
 
     result = await requestJson(apiBase, "/api/vault/setup", {
       method: "POST",
+      headers: { "content-type": "application/json" },
+      rawBody: ""
+    });
+    assert.equal(result.status, 400);
+    assert.equal(result.data.code, "body_required");
+
+    result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
       body: { password: "test-password-123" }
     });
     assert.equal(result.status, 200);
@@ -373,6 +381,59 @@ test("HTTP API returns specific status codes for invalid inputs", async () => {
   } finally {
     proxy.stop();
     await close(api);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("URL test uses an independent timeout for each probe attempt", async () => {
+  const upstreamHits = [];
+  const upstream = http.createServer((req, res) => {
+    upstreamHits.push(req.url);
+    if (req.url === "/slow/models") {
+      setTimeout(() => {
+        if (res.destroyed) return;
+        res.writeHead(504, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "too slow" }));
+      }, 5500);
+      return;
+    }
+    if (req.url === "/slow/v1/models") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "fast-model" }] }));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-test-url-timeout-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    const result = await requestJson(apiBase, "/api/test-url", {
+      method: "POST",
+      body: {
+        protocol: "openai-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/slow`,
+        isLocal: true
+      }
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(result.data.ok, true);
+    assert.equal(result.data.status, 200);
+    assert.deepEqual(result.data.modelNames, ["fast-model"]);
+    assert.deepEqual(upstreamHits.slice(0, 2), ["/slow/models", "/slow/v1/models"]);
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
@@ -650,6 +711,59 @@ test("global gateways can route dual OpenAI and Anthropic compatible providers",
     proxy.stop();
     await close(api);
     await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("successful unlocks do not consume auth failure quota", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-auth-limit-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    for (let index = 0; index < 15; index += 1) {
+      result = await requestJson(apiBase, "/api/vault/lock", { method: "POST" });
+      assert.equal(result.status, 200);
+      result = await requestJson(apiBase, "/api/vault/unlock", {
+        method: "POST",
+        body: { password: "test-password-123" }
+      });
+      assert.equal(result.status, 200);
+    }
+
+    result = await requestJson(apiBase, "/api/vault/unlock", {
+      method: "POST",
+      body: { password: "wrong-password" }
+    });
+    assert.notEqual(result.status, 429);
+
+    for (let index = 0; index < 11; index += 1) {
+      result = await requestJson(apiBase, "/api/vault/unlock", {
+        method: "POST",
+        body: { password: "wrong-password" }
+      });
+      assert.notEqual(result.status, 429);
+    }
+
+    result = await requestJson(apiBase, "/api/vault/unlock", {
+      method: "POST",
+      body: { password: "wrong-password" }
+    });
+    assert.equal(result.status, 429);
+    assert.equal(result.data.code, "auth_rate_limited");
+  } finally {
+    proxy.stop();
+    await close(api);
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

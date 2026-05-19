@@ -21,7 +21,9 @@
       "Bash(taskkill /F /PID 21512)",
       "Bash(taskkill //F //PID 21512)",
       "Bash(findstr \":5173\")",
-      "Bash(taskkill //F //PID 11860)"
+      "Bash(taskkill //F //PID 11860)",
+      "Bash(npm test *)",
+      "Bash(npx jest *)"
     ]
   }
 }
