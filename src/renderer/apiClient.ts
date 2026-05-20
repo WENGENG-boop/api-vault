@@ -1,6 +1,7 @@
 ﻿import type { AddKeyInput, ApiKeyInput, AppState, BalanceTestResult, CloudflaredStatus, LocalService, ProviderInput } from "../shared/types";
 
 import type { ProxyTokenInput } from "../shared/types";
+import type { AccountPool, AccountPoolImportResult, AccountPoolInput, AccountPoolTestResult, AccountPoolUploadAuthResult, ProviderModel, ProviderModelInput, ProviderModelSyncResult } from "../shared/types";
 
 export interface CopyResult {
   text: string;
@@ -36,6 +37,19 @@ export interface ApiVaultClient {
   revealProxyToken: (id: string) => Promise<{ secret: string }>;
   regenerateProxyToken: (id: string) => Promise<{ secret: string; state: AppState }>;
   testUrl: (input: { baseUrl: string; protocol?: string; providerId?: string; isLocal?: boolean; type?: string; apiKey?: string }) => Promise<UrlTestResult>;
+  getAccountPools: () => Promise<AccountPool[]>;
+  saveAccountPool: (input: AccountPoolInput & { createProvider?: boolean }) => Promise<AppState>;
+  deleteAccountPool: (id: string) => Promise<AppState>;
+  createAccountPoolProvider: (id: string) => Promise<AppState>;
+  testAccountPool: (id: string) => Promise<{ result: AccountPoolTestResult; state: AppState }>;
+  syncAccountPoolModels: (id: string) => Promise<{ result: AccountPoolTestResult; state: AppState }>;
+  importAccountPoolModelsToProxyToken: (id: string, input: { proxyTokenId: string; modelNames?: string[] }) => Promise<{ result: AccountPoolImportResult; state: AppState }>;
+  uploadAccountPoolAuth: (id: string, input: { fileName: string; content: string }) => Promise<{ result: AccountPoolUploadAuthResult; state: AppState }>;
+  getModelCatalog: () => Promise<ProviderModel[]>;
+  syncProviderModels: (providerId: string) => Promise<{ result: ProviderModelSyncResult; state: AppState }>;
+  saveProviderModel: (input: ProviderModelInput) => Promise<AppState>;
+  updateProviderModel: (id: string, input: ProviderModelInput) => Promise<AppState>;
+  deleteProviderModel: (id: string) => Promise<AppState>;
   getCloudflaredStatus: () => Promise<CloudflaredStatus>;
   startCloudflared: () => Promise<CloudflaredStatus>;
   stopCloudflared: () => Promise<CloudflaredStatus>;
@@ -124,6 +138,58 @@ export const apiClient: ApiVaultClient = window.apiVault ?? {
   },
   testUrl: (input: { baseUrl: string; protocol?: string; providerId?: string; isLocal?: boolean; type?: string; apiKey?: string }) =>
     request<UrlTestResult>("/api/test-url", { method: "POST", body: input }),
+  getAccountPools: () => request<AccountPool[]>("/api/account-pools"),
+  saveAccountPool: async (input) => {
+    const { state } = await request<{ state: AppState }>("/api/account-pools", {
+      method: "POST",
+      body: input
+    });
+    return state;
+  },
+  deleteAccountPool: (id) => request<AppState>(`/api/account-pools/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  createAccountPoolProvider: async (id) => {
+    const { state } = await request<{ state: AppState }>(
+      `/api/account-pools/${encodeURIComponent(id)}/create-provider`,
+      { method: "POST" }
+    );
+    return state;
+  },
+  testAccountPool: (id) => request<{ result: AccountPoolTestResult; state: AppState }>(
+    `/api/account-pools/${encodeURIComponent(id)}/test`,
+    { method: "POST" }
+  ),
+  syncAccountPoolModels: (id) => request<{ result: AccountPoolTestResult; state: AppState }>(
+    `/api/account-pools/${encodeURIComponent(id)}/sync-models`,
+    { method: "POST" }
+  ),
+  importAccountPoolModelsToProxyToken: (id, input) => request<{ result: AccountPoolImportResult; state: AppState }>(
+    `/api/account-pools/${encodeURIComponent(id)}/import-models-to-proxy-token`,
+    { method: "POST", body: input }
+  ),
+  uploadAccountPoolAuth: (id, input) => request<{ result: AccountPoolUploadAuthResult; state: AppState }>(
+    `/api/account-pools/${encodeURIComponent(id)}/upload-auth`,
+    { method: "POST", body: input }
+  ),
+  getModelCatalog: () => request<ProviderModel[]>("/api/model-catalog"),
+  syncProviderModels: (providerId) => request<{ result: ProviderModelSyncResult; state: AppState }>(
+    `/api/model-catalog/sync-provider/${encodeURIComponent(providerId)}`,
+    { method: "POST" }
+  ),
+  saveProviderModel: async (input) => {
+    const { state } = await request<{ state: AppState }>("/api/model-catalog/manual", {
+      method: "POST",
+      body: input
+    });
+    return state;
+  },
+  updateProviderModel: async (id, input) => {
+    const { state } = await request<{ state: AppState }>(`/api/model-catalog/${encodeURIComponent(id)}`, {
+      method: "POST",
+      body: input
+    });
+    return state;
+  },
+  deleteProviderModel: (id) => request<AppState>(`/api/model-catalog/${encodeURIComponent(id)}`, { method: "DELETE" }),
   getCloudflaredStatus: () => request<CloudflaredStatus>("/api/cloudflared/status"),
   startCloudflared: () => request<CloudflaredStatus>("/api/cloudflared/start", { method: "POST" }),
   stopCloudflared: () => request<CloudflaredStatus>("/api/cloudflared/stop", { method: "POST" }),

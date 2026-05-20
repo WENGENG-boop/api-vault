@@ -385,6 +385,351 @@ test("HTTP API returns specific status codes for invalid inputs", async () => {
   }
 });
 
+test("HTTP API manages account pools, creates providers, and imports models to proxy tokens", async () => {
+  const cpaHits = [];
+  const cpa = http.createServer((req, res) => {
+    cpaHits.push({ url: req.url, authorization: req.headers.authorization });
+    if (req.url === "/") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (req.url === "/v1/models") {
+      assert.equal(req.headers.authorization, "Bearer cpa-proxy-key");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "claude-cpa" }, { id: "codex-cpa" }] }));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+
+  const cpaPort = await listen(cpa);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-account-pools-http-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/account-pools", {
+      method: "POST",
+      body: {
+        name: "CPA Pool",
+        kind: "cpa",
+        baseUrl: `http://127.0.0.1:${cpaPort}`,
+        apiKey: "cpa-proxy-key",
+        authsDirectory: path.join(tempDir, "auths"),
+        createProvider: true
+      }
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.state.accountPools.length, 1);
+    assert.equal(result.data.state.providers.length, 1);
+    assert.equal(result.data.state.providers[0].baseUrl, `http://127.0.0.1:${cpaPort}/v1`);
+    const pool = result.data.state.accountPools[0];
+    const provider = result.data.state.providers[0];
+
+    result = await requestJson(apiBase, "/api/test-url", {
+      method: "POST",
+      body: {
+        providerId: provider.id,
+        protocol: provider.protocol,
+        baseUrl: provider.baseUrl
+      }
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.ok, true);
+
+    result = await requestJson(apiBase, `/api/account-pools/${pool.id}/sync-models`, { method: "POST" });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.result.ok, true);
+    assert.deepEqual(result.data.result.modelNames, ["claude-cpa", "codex-cpa"]);
+
+    result = await requestJson(apiBase, "/api/proxy-tokens", {
+      method: "POST",
+      body: {
+        name: "account pool client",
+        allowedProviderIds: [],
+        allowedModels: [],
+        allowStreaming: true,
+        requestsPerMinute: 60,
+        requestsPerDay: 1000
+      }
+    });
+    assert.equal(result.status, 200);
+    const token = result.data.state.proxyTokens[0];
+    const proxySecret = result.data.secret;
+
+    result = await requestJson(apiBase, `/api/account-pools/${pool.id}/import-models-to-proxy-token`, {
+      method: "POST",
+      body: { proxyTokenId: token.id }
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.result.importedCount, 2);
+    const updatedToken = result.data.state.proxyTokens[0];
+    assert.equal(updatedToken.allowedProviderIds.includes(provider.id), true);
+    assert.deepEqual(updatedToken.allowedModels.map((rule) => [rule.publicModel, rule.providerId, rule.upstreamModel]), [
+      ["claude-cpa", provider.id, "claude-cpa"],
+      ["codex-cpa", provider.id, "codex-cpa"]
+    ]);
+
+    const proxyModels = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/v1/models`, {
+      headers: { authorization: `Bearer ${proxySecret}` }
+    });
+    assert.equal(proxyModels.status, 200);
+    assert.deepEqual((await proxyModels.json()).data.map((model) => model.id), ["claude-cpa", "codex-cpa"]);
+
+    result = await requestJson(apiBase, `/api/account-pools/${pool.id}/upload-auth`, {
+      method: "POST",
+      body: {
+        fileName: "../claude-auth.json",
+        content: JSON.stringify({ token: "auth-secret" })
+      }
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.result.fileName, "claude-auth.json");
+    assert.equal(fs.existsSync(path.join(tempDir, "auths", "claude-auth.json")), true);
+    assert.equal(JSON.stringify(result.data).includes("auth-secret"), false);
+
+    const persisted = fs.readFileSync(path.join(tempDir, "vault.json"), "utf8");
+    assert.equal(persisted.includes("cpa-proxy-key"), false);
+    assert.ok(cpaHits.some((hit) => hit.url === "/v1/models"));
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(cpa);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("HTTP API syncs account pool models from non-OpenAI model list shapes", async () => {
+  const cpa = http.createServer((req, res) => {
+    if (req.url === "/v1/models") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        models: [
+          { name: "models/gemini-2.5-pro" },
+          { modelId: "claude-opus-4.1" },
+          "grok-4"
+        ]
+      }));
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+  });
+
+  const cpaPort = await listen(cpa);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-account-pools-model-shapes-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/account-pools", {
+      method: "POST",
+      body: {
+        name: "Mixed Models Pool",
+        kind: "cpa",
+        baseUrl: `http://127.0.0.1:${cpaPort}`,
+        apiKey: "cpa-proxy-key",
+        createProvider: true
+      }
+    });
+    assert.equal(result.status, 200);
+    const pool = result.data.state.accountPools[0];
+
+    result = await requestJson(apiBase, `/api/account-pools/${pool.id}/sync-models`, { method: "POST" });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.result.ok, true);
+    assert.deepEqual(result.data.result.modelNames, ["gemini-2.5-pro", "claude-opus-4.1", "grok-4"]);
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(cpa);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("HTTP API syncs provider models and stores manual aliases", async () => {
+  const upstreamHits = [];
+  const upstream = http.createServer((req, res) => {
+    upstreamHits.push({ url: req.url, authorization: req.headers.authorization });
+    if (req.url === "/v1/models") {
+      assert.equal(req.headers.authorization, "Bearer sk-catalog");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [{ id: "gpt-4o" }, { id: "claude-sonnet-4-20250514" }] }));
+      return;
+    }
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-model-catalog-http-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/providers/add-key", {
+      method: "POST",
+      body: {
+        providerName: "Catalog Provider",
+        keyName: "catalog",
+        protocol: "openai-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+        currency: "USD",
+        apiKey: "sk-catalog",
+        balanceConfig: { enabled: false }
+      }
+    });
+    assert.equal(result.status, 200);
+    const provider = result.data.providers[0];
+
+    result = await requestJson(apiBase, `/api/model-catalog/sync-provider/${provider.id}`, { method: "POST" });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.result.ok, true);
+    assert.equal(result.data.result.syncedCount, 2);
+    assert.equal(result.data.state.modelCatalog.length, 2);
+    const sonnet = result.data.state.modelCatalog.find((model) => model.modelId === "claude-sonnet-4-20250514");
+    assert.ok(sonnet);
+
+    result = await requestJson(apiBase, `/api/model-catalog/${sonnet.id}`, {
+      method: "POST",
+      body: {
+        providerId: provider.id,
+        modelId: sonnet.modelId,
+        displayName: "Claude Sonnet 4",
+        aliases: ["sonnet 4"],
+        capabilities: ["text", "vision", "tool"],
+        source: "manual"
+      }
+    });
+    assert.equal(result.status, 200);
+    const updated = result.data.state.modelCatalog.find((model) => model.id === sonnet.id);
+    assert.equal(updated.displayName, "Claude Sonnet 4");
+    assert.equal(updated.aliases.includes("sonnet 4"), true);
+
+    result = await requestJson(apiBase, "/api/model-catalog");
+    assert.equal(result.status, 200);
+    assert.equal(result.data.some((model) => model.displayName === "Claude Sonnet 4"), true);
+    assert.ok(upstreamHits.some((hit) => hit.url === "/v1/models"));
+
+    const persisted = fs.readFileSync(path.join(tempDir, "vault.json"), "utf8");
+    assert.equal(persisted.includes("sk-catalog"), false);
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("HTTP API syncs provider models from local mappings when upstream model route is unavailable", async () => {
+  const upstream = http.createServer((req, res) => {
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-model-catalog-known-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/providers/add-key", {
+      method: "POST",
+      body: {
+        providerName: "Anthropic Without Models",
+        keyName: "default",
+        protocol: "anthropic-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/anthropic`,
+        currency: "USD",
+        apiKey: "sk-anthropic",
+        balanceConfig: { enabled: false }
+      }
+    });
+    assert.equal(result.status, 200);
+    const provider = result.data.providers[0];
+    const key = provider.apiKeys[0];
+
+    result = await requestJson(apiBase, "/api/proxy-tokens", {
+      method: "POST",
+      body: {
+        name: "known mappings",
+        allowedProviderIds: [provider.id],
+        allowedModels: [
+          {
+            publicModel: "claude-deepseek",
+            providerId: provider.id,
+            apiKeyId: key.id,
+            upstreamModel: "deepseek-v4-pro"
+          },
+          {
+            publicModel: "claude-xiaomi",
+            providerId: provider.id,
+            apiKeyId: key.id,
+            upstreamModel: "mimo-v2.5-pro"
+          }
+        ],
+        allowStreaming: true,
+        requestsPerMinute: 60,
+        requestsPerDay: 1000
+      }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, `/api/model-catalog/sync-provider/${provider.id}`, { method: "POST" });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.result.ok, true);
+    assert.deepEqual(result.data.result.modelIds, ["deepseek-v4-pro", "mimo-v2.5-pro"]);
+    assert.equal(result.data.state.modelCatalog.length, 2);
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("URL test uses an independent timeout for each probe attempt", async () => {
   const upstreamHits = [];
   const upstream = http.createServer((req, res) => {
@@ -596,6 +941,83 @@ test("URL test falls back to unauthenticated Anthropic-compatible probes when mo
   }
 });
 
+test("URL test probes Anthropic messages route when models route is missing", async () => {
+  const upstreamHits = [];
+  const upstream = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      upstreamHits.push({
+        method: req.method,
+        url: req.url,
+        xApiKey: req.headers["x-api-key"],
+        anthropicVersion: req.headers["anthropic-version"],
+        body: Buffer.concat(chunks).toString("utf8")
+      });
+      if (req.method === "POST" && req.url === "/anthropic/v1/messages") {
+        assert.equal(req.headers["x-api-key"], "sk-anthropic");
+        assert.ok(req.headers["anthropic-version"]);
+        res.writeHead(400, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "missing model" }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-anthropic-messages-test-url-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/providers/add-key", {
+      method: "POST",
+      body: {
+        providerName: "Anthropic Messages Route",
+        keyName: "anthropic",
+        protocol: "anthropic-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/anthropic`,
+        currency: "USD",
+        apiKey: "sk-anthropic",
+        balanceConfig: { enabled: false }
+      }
+    });
+    assert.equal(result.status, 200);
+    const provider = result.data.providers[0];
+
+    result = await requestJson(apiBase, "/api/test-url", {
+      method: "POST",
+      body: {
+        providerId: provider.id,
+        protocol: "anthropic-compatible",
+        baseUrl: provider.baseUrl
+      }
+    });
+
+    assert.equal(result.status, 200);
+    assert.equal(result.data.ok, true);
+    assert.equal(result.data.status, 400);
+    assert.equal(upstreamHits.some((hit) => hit.method === "POST" && hit.url === "/anthropic/v1/messages" && hit.xApiKey === "sk-anthropic"), true);
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("global gateways can route dual OpenAI and Anthropic compatible providers", async () => {
   const upstreamHits = [];
   const upstream = http.createServer((req, res) => {
@@ -707,6 +1129,216 @@ test("global gateways can route dual OpenAI and Anthropic compatible providers",
     assert.equal(result.data.usageEvents.some((event) => event.protocol === "openai-compatible"), true);
     assert.equal(result.data.usageEvents.some((event) => event.protocol === "anthropic-compatible"), true);
     assert.equal(upstreamHits.length, 4);
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("public proxy preserves multimodal image inputs across OpenAI and Anthropic formats", async () => {
+  const hits = [];
+  const imageBytes = Buffer.from("fake-image-bytes");
+  const upstream = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/image.png") {
+      res.writeHead(200, { "content-type": "image/png" });
+      res.end(imageBytes);
+      return;
+    }
+
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      const body = Buffer.concat(chunks).toString("utf8");
+      hits.push({
+        url: req.url,
+        authorization: req.headers.authorization,
+        xApiKey: req.headers["x-api-key"],
+        anthropicVersion: req.headers["anthropic-version"],
+        body: JSON.parse(body)
+      });
+
+      if (req.url === "/anthropic/v1/messages") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          id: "msg_vision",
+          type: "message",
+          role: "assistant",
+          model: "claude-real",
+          content: [{ type: "text", text: "saw image" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 3 }
+        }));
+        return;
+      }
+
+      if (req.url === "/openai/v1/chat/completions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({
+          id: "chat_vision",
+          object: "chat.completion",
+          model: "gpt-real",
+          choices: [{ index: 0, message: { role: "assistant", content: "saw data url" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 }
+        }));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "unexpected route" }));
+    });
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-multimodal-public-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/providers/add-key", {
+      method: "POST",
+      body: {
+        providerName: "Anthropic Vision",
+        keyName: "anthropic",
+        protocol: "anthropic-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/anthropic`,
+        currency: "USD",
+        apiKey: "sk-anthropic",
+        balanceConfig: { enabled: false }
+      }
+    });
+    assert.equal(result.status, 200);
+    const anthropicProvider = result.data.providers[0];
+    const anthropicKey = anthropicProvider.apiKeys[0];
+
+    result = await requestJson(apiBase, "/api/providers/add-key", {
+      method: "POST",
+      body: {
+        providerName: "OpenAI Vision",
+        keyName: "openai",
+        protocol: "openai-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/openai/v1`,
+        currency: "USD",
+        apiKey: "sk-openai",
+        balanceConfig: { enabled: false }
+      }
+    });
+    assert.equal(result.status, 200);
+    const openaiProvider = result.data.providers.find((provider) => provider.name === "OpenAI Vision");
+    const openaiKey = openaiProvider.apiKeys[0];
+
+    result = await requestJson(apiBase, "/api/proxy-tokens", {
+      method: "POST",
+      body: {
+        name: "vision clients",
+        allowedProviderIds: [anthropicProvider.id, openaiProvider.id],
+        allowedModels: [
+          {
+            publicModel: "public-claude-vision",
+            providerId: anthropicProvider.id,
+            apiKeyId: anthropicKey.id,
+            upstreamModel: "claude-real"
+          },
+          {
+            publicModel: "public-gpt-vision",
+            providerId: openaiProvider.id,
+            apiKeyId: openaiKey.id,
+            upstreamModel: "gpt-real"
+          }
+        ],
+        allowStreaming: false,
+        requestsPerMinute: 60,
+        requestsPerDay: 1000
+      }
+    });
+    assert.equal(result.status, 200);
+    const proxySecret = result.data.secret;
+    const publicBase = `http://127.0.0.1:${proxy.getPort()}/proxy/v1`;
+
+    let response = await fetch(`${publicBase}/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${proxySecret}` },
+      body: JSON.stringify({
+        model: "public-claude-vision",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "describe this" },
+            { type: "image_url", image_url: { url: `http://127.0.0.1:${upstreamPort}/image.png` } }
+          ]
+        }]
+      })
+    });
+    assert.equal(response.status, 200);
+    let json = await response.json();
+    assert.equal(json.choices[0].message.content, "saw image");
+    assert.equal(json.usage.prompt_tokens, 10);
+
+    response = await fetch(`${publicBase}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": proxySecret, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "public-claude-vision",
+        max_tokens: 20,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "anthropic url image" },
+            { type: "image", source: { type: "url", url: `http://127.0.0.1:${upstreamPort}/image.png` } }
+          ]
+        }]
+      })
+    });
+    assert.equal(response.status, 200);
+    json = await response.json();
+    assert.equal(json.content[0].text, "saw image");
+
+    response = await fetch(`${publicBase}/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": proxySecret, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({
+        model: "public-gpt-vision",
+        max_tokens: 20,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "describe this" },
+            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: "aW1hZ2U=" } }
+          ]
+        }]
+      })
+    });
+    assert.equal(response.status, 200);
+    json = await response.json();
+    assert.equal(json.content[0].text, "saw data url");
+    assert.equal(json.usage.input_tokens, 8);
+
+    const anthropicHit = hits.find((hit) => hit.url === "/anthropic/v1/messages");
+    assert.equal(anthropicHit.xApiKey, "sk-anthropic");
+    assert.equal(anthropicHit.body.model, "claude-real");
+    assert.equal(anthropicHit.body.messages[0].content[1].type, "image");
+    assert.equal(anthropicHit.body.messages[0].content[1].source.media_type, "image/png");
+    assert.equal(anthropicHit.body.messages[0].content[1].source.data, imageBytes.toString("base64"));
+    const anthropicUrlHit = hits.find((hit) => hit.body.messages?.[0]?.content?.[0]?.text === "anthropic url image");
+    assert.equal(anthropicUrlHit.body.messages[0].content[1].source.type, "base64");
+    assert.equal(anthropicUrlHit.body.messages[0].content[1].source.data, imageBytes.toString("base64"));
+
+    const openaiHit = hits.find((hit) => hit.url === "/openai/v1/chat/completions");
+    assert.equal(openaiHit.authorization, "Bearer sk-openai");
+    assert.equal(openaiHit.body.model, "gpt-real");
+    assert.equal(openaiHit.body.messages[0].content[1].type, "image_url");
+    assert.equal(openaiHit.body.messages[0].content[1].image_url.url, "data:image/jpeg;base64,aW1hZ2U=");
   } finally {
     proxy.stop();
     await close(api);

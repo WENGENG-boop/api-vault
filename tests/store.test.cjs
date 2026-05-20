@@ -151,4 +151,110 @@ test("store backfills api key hashes for older vault data on unlock", () => {
   }
 });
 
+test("store links account pools to providers and imports synced models into proxy tokens", () => {
+  const { dir, file } = tempVaultPath("api-vault-account-pool-");
+  try {
+    const store = new VaultStore(file);
+    store.setup("test-password-123");
+
+    const pool = store.upsertAccountPool({
+      name: "CPA Pool",
+      kind: "cpa",
+      baseUrl: "http://127.0.0.1:8317",
+      apiKey: "cpa-proxy-key"
+    });
+    assert.equal(pool.hasApiKey, true);
+
+    store.updateAccountPoolSyncResult(pool.id, {
+      ok: true,
+      status: 200,
+      rootStatus: 200,
+      modelsStatus: 200,
+      latencyMs: 12,
+      checkedAt: "2026-05-19T00:00:00.000Z",
+      modelNames: ["claude-cpa", "codex-cpa"]
+    });
+
+    const linked = store.ensureAccountPoolProvider(pool.id);
+    assert.equal(linked.provider.baseUrl, "http://127.0.0.1:8317/v1");
+    assert.equal(linked.provider.protocol, "openai-compatible");
+    assert.equal(linked.provider.apiKeys.length, 1);
+
+    const token = store.createProxyToken({
+      name: "client",
+      allowedProviderIds: [],
+      allowedModels: [],
+      allowStreaming: true,
+      requestsPerMinute: 60,
+      requestsPerDay: 1000
+    }).token;
+
+    const imported = store.importAccountPoolModelsToProxyToken(pool.id, { proxyTokenId: token.id });
+    assert.equal(imported.importedCount, 2);
+
+    const state = store.getState();
+    const updatedToken = state.proxyTokens.find((item) => item.id === token.id);
+    assert.ok(updatedToken);
+    assert.equal(updatedToken.allowedProviderIds.includes(linked.provider.id), true);
+    assert.deepEqual(updatedToken.allowedModels.map((rule) => ({
+      publicModel: rule.publicModel,
+      providerId: rule.providerId,
+      upstreamModel: rule.upstreamModel
+    })), [
+      { publicModel: "claude-cpa", providerId: linked.provider.id, upstreamModel: "claude-cpa" },
+      { publicModel: "codex-cpa", providerId: linked.provider.id, upstreamModel: "codex-cpa" }
+    ]);
+
+    const persisted = fs.readFileSync(file, "utf8");
+    assert.equal(persisted.includes("cpa-proxy-key"), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("store keeps provider model catalog metadata and synced models", () => {
+  const { dir, file } = tempVaultPath("api-vault-model-catalog-");
+  try {
+    const store = new VaultStore(file);
+    store.setup("test-password-123");
+    const added = store.addKeyWithAutoMerge({
+      providerName: "Catalog Provider",
+      keyName: "catalog",
+      protocol: "openai-compatible",
+      baseUrl: "https://catalog.example/v1",
+      currency: "USD",
+      apiKey: "sk-catalog",
+      balanceConfig: { enabled: false }
+    });
+
+    const manual = store.upsertProviderModel({
+      providerId: added.provider.id,
+      modelId: "claude-sonnet-4-20250514",
+      displayName: "Claude Sonnet 4",
+      aliases: ["sonnet 4", "claude 4 sonnet"],
+      capabilities: ["text", "vision", "tool"],
+      contextWindow: 200000,
+      source: "manual"
+    });
+    assert.equal(manual.providerName, "Catalog Provider");
+    assert.equal(manual.displayName, "Claude Sonnet 4");
+
+    store.upsertSyncedProviderModels(added.provider.id, ["claude-sonnet-4-20250514", "gpt-4o"], "2026-05-19T00:00:00.000Z");
+    const state = store.getState();
+    const catalog = state.modelCatalog.sort((a, b) => a.modelId.localeCompare(b.modelId));
+    assert.equal(catalog.length, 2);
+    assert.equal(catalog[0].modelId, "claude-sonnet-4-20250514");
+    assert.equal(catalog[0].aliases.includes("sonnet 4"), true);
+    assert.equal(catalog[0].source, "manual");
+    assert.equal(catalog[1].modelId, "gpt-4o");
+    assert.equal(catalog[1].source, "auto");
+    assert.equal(catalog[1].capabilities.includes("vision"), true);
+
+    const persisted = fs.readFileSync(file, "utf8");
+    assert.equal(persisted.includes("sk-catalog"), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 

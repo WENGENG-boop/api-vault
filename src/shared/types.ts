@@ -3,6 +3,10 @@ export type BalanceMethod = "GET" | "POST";
 export type GatewayType = "openai" | "anthropic" | "auto" | "provider" | "legacy-key" | "public-proxy" | "local-service";
 export type LocalServiceStatus = "unknown" | "available" | "unavailable";
 export type LocalServiceProtocol = "openai-compatible" | "anthropic-compatible" | "custom" | "unknown";
+export type AccountPoolKind = "cpa";
+export type AccountPoolStatus = "unknown" | "available" | "unavailable";
+export type ModelCapability = "text" | "vision" | "tool" | "long-context" | "reasoning";
+export type ProviderModelSource = "auto" | "manual";
 
 export interface BalanceConfig {
   enabled: boolean;
@@ -190,12 +194,119 @@ export interface ProxyTokenSafe {
   lastUsedAt?: string;
 }
 
+export interface AccountPoolInput {
+  id?: string;
+  name: string;
+  kind?: AccountPoolKind;
+  baseUrl: string;
+  managementUrl?: string;
+  apiKey?: string;
+  managementSecret?: string;
+  authsDirectory?: string;
+  providerId?: string;
+  notes?: string;
+}
+
+export interface AccountPool {
+  id: string;
+  name: string;
+  kind: AccountPoolKind;
+  baseUrl: string;
+  managementUrl?: string;
+  authsDirectory?: string;
+  providerId?: string;
+  status: AccountPoolStatus;
+  latencyMs?: number;
+  lastCheckedAt?: string;
+  modelNames: string[];
+  lastError?: string;
+  rootStatus?: number;
+  modelsStatus?: number;
+  notes?: string;
+  hasApiKey: boolean;
+  apiKeyMasked?: string;
+  hasManagementSecret: boolean;
+  managementSecretMasked?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountPoolTestResult {
+  ok: boolean;
+  status?: number;
+  rootStatus?: number;
+  modelsStatus?: number;
+  latencyMs: number;
+  checkedAt: string;
+  error?: string;
+  modelNames: string[];
+}
+
+export interface AccountPoolImportResult {
+  importedCount: number;
+  replacedCount: number;
+  skippedCount: number;
+  modelNames: string[];
+  token: ProxyTokenSafe;
+}
+
+export interface AccountPoolUploadAuthResult {
+  fileName: string;
+  sizeBytes: number;
+  written: boolean;
+}
+
+export interface ProviderModel {
+  id: string;
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  displayName?: string;
+  aliases: string[];
+  canonicalModelId?: string;
+  capabilities: ModelCapability[];
+  inputPrice?: number;
+  outputPrice?: number;
+  contextWindow?: number;
+  source: ProviderModelSource;
+  lastSeenAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderModelInput {
+  id?: string;
+  providerId: string;
+  modelId: string;
+  displayName?: string;
+  aliases?: string[];
+  canonicalModelId?: string;
+  capabilities?: ModelCapability[];
+  inputPrice?: number;
+  outputPrice?: number;
+  contextWindow?: number;
+  source?: ProviderModelSource;
+}
+
+export interface ProviderModelSyncResult {
+  providerId: string;
+  providerName: string;
+  ok: boolean;
+  status?: number;
+  syncedCount: number;
+  modelIds: string[];
+  error?: string;
+  checkedAt: string;
+}
+
 export interface AppState {
   initialized: boolean;
   unlocked: boolean;
   proxyPort?: number;
   providers: ProviderSafe[];
   proxyTokens: ProxyTokenSafe[];
+  accountPools: AccountPool[];
+  modelCatalog: ProviderModel[];
   usageEvents: UsageEvent[];
   usageRollups: UsageRollup[];
   balanceSnapshots: BalanceSnapshot[];

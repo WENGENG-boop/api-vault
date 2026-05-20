@@ -3,13 +3,15 @@ import type { AppState } from "../shared/types";
 import { apiClient } from "./apiClient";
 import { STATE_REFRESH_INTERVAL_MS } from "./constants";
 import { Billing } from "./pages/Billing";
+import { AccountPools } from "./pages/AccountPools";
 import { Dashboard } from "./pages/Dashboard";
 import { LocalServicesPage } from "./pages/LocalServicesPage";
+import { ModelDirectory } from "./pages/ModelDirectory";
 import { Providers } from "./pages/Providers";
 import { ProxyTokens } from "./pages/ProxyTokens";
 import { Usage } from "./pages/Usage";
 
-type Tab = "dashboard" | "providers" | "proxy-tokens" | "local-services" | "usage" | "billing";
+type Tab = "dashboard" | "providers" | "models" | "account-pools" | "proxy-tokens" | "local-services" | "usage" | "billing";
 
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
@@ -110,6 +112,8 @@ export default function App() {
     ...state,
     providers: state.providers ?? [],
     proxyTokens: state.proxyTokens ?? [],
+    accountPools: state.accountPools ?? [],
+    modelCatalog: state.modelCatalog ?? [],
     usageEvents: state.usageEvents ?? [],
     usageRollups: state.usageRollups ?? [],
     balanceSnapshots: state.balanceSnapshots ?? [],
@@ -130,9 +134,9 @@ export default function App() {
       <nav className="sidebar">
         <div className="brand">API Vault</div>
         <div className="nav-items">
-          {(["dashboard", "providers", "proxy-tokens", "local-services", "usage", "billing"] as Tab[]).map((t) => (
+          {(["dashboard", "providers", "models", "account-pools", "proxy-tokens", "local-services", "usage", "billing"] as Tab[]).map((t) => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "proxy-tokens" ? "Proxy Tokens" : t === "local-services" ? "Local Services" : t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === "proxy-tokens" ? "Proxy Tokens" : t === "local-services" ? "Local Services" : t === "account-pools" ? "Account Pools" : t === "models" ? "Models" : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
@@ -152,6 +156,8 @@ export default function App() {
         )}
         {tab === "dashboard" && <Dashboard state={safeState} />}
         {tab === "providers" && <Providers state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
+        {tab === "models" && <ModelDirectory state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
+        {tab === "account-pools" && <AccountPools state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
         {tab === "proxy-tokens" && <ProxyTokens state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
         {tab === "local-services" && <LocalServicesPage state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
         {tab === "usage" && <Usage state={safeState} />}

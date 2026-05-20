@@ -3,6 +3,12 @@ import { dirname, join } from "node:path";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import type {
   AddKeyInput,
+  AccountPool,
+  AccountPoolInput,
+  AccountPoolKind,
+  AccountPoolStatus,
+  AccountPoolImportResult,
+  AccountPoolTestResult,
   ApiKeyInput,
   ApiKeySafe,
   ApiProtocol,
@@ -14,7 +20,11 @@ import type {
   LocalService,
   LocalServiceProtocol,
   LocalServiceStatus,
+  ModelCapability,
   ProviderInput,
+  ProviderModel,
+  ProviderModelInput,
+  ProviderModelSource,
   ProviderSafe,
   ProxyModelRule,
   ProxyTokenInput,
@@ -23,6 +33,7 @@ import type {
   UsageRollup,
   UsageRollupPeriod
 } from "../shared/types";
+import { cpaProviderBaseUrl } from "./cpaConnector";
 import {
   createVaultHeader,
   decryptString,
@@ -78,6 +89,47 @@ interface ProxyTokenRecord {
   lastUsedAt?: string;
 }
 
+interface AccountPoolRecord {
+  id: string;
+  name: string;
+  kind: AccountPoolKind;
+  baseUrl: string;
+  managementUrl?: string;
+  authsDirectory?: string;
+  providerId?: string;
+  status: AccountPoolStatus;
+  latencyMs?: number;
+  lastCheckedAt?: string;
+  modelNames: string[];
+  lastError?: string;
+  rootStatus?: number;
+  modelsStatus?: number;
+  notes?: string;
+  apiKey?: EncryptedText;
+  apiKeyMasked?: string;
+  managementSecret?: EncryptedText;
+  managementSecretMasked?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ProviderModelRecord {
+  id: string;
+  providerId: string;
+  modelId: string;
+  displayName?: string;
+  aliases: string[];
+  canonicalModelId?: string;
+  capabilities: ModelCapability[];
+  inputPrice?: number;
+  outputPrice?: number;
+  contextWindow?: number;
+  source: ProviderModelSource;
+  lastSeenAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ApiKeyWithSecret extends ApiKeySafe {
   apiKey: string;
   queryKey?: string;
@@ -108,12 +160,24 @@ export interface PublicProxyResolution {
   upstreamModel?: string;
 }
 
+export interface AccountPoolForConnector {
+  id: string;
+  name: string;
+  baseUrl: string;
+  managementUrl?: string;
+  authsDirectory?: string;
+  apiKey?: string;
+  managementSecret?: string;
+}
+
 interface PersistedData {
   version: number;
   storageVersion?: number;
   vault?: VaultHeader;
   providers: ProviderRecord[];
   proxyTokens: ProxyTokenRecord[];
+  accountPools: AccountPoolRecord[];
+  modelCatalog: ProviderModelRecord[];
   usageEvents: UsageEvent[];
   usageRollups: UsageRollup[];
   balanceSnapshots: BalanceSnapshot[];
@@ -124,6 +188,8 @@ interface PersistedData {
 interface RawPersistedData extends Partial<PersistedData> {
   providers?: any[];
   proxyTokens?: any[];
+  accountPools?: any[];
+  modelCatalog?: any[];
   localServices?: any[];
 }
 
@@ -224,6 +290,8 @@ export class VaultStore {
       proxyPort,
       providers,
       proxyTokens: this.data.proxyTokens.map((token) => this.safeProxyToken(token)),
+      accountPools: this.data.accountPools.map((pool) => this.safeAccountPool(pool)),
+      modelCatalog: this.data.modelCatalog.map((model) => this.safeProviderModel(model, providers)),
       usageEvents: [...this.data.usageEvents].sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
       usageRollups: [...this.data.usageRollups].sort((a, b) =>
         b.bucketStart.localeCompare(a.bucketStart) || a.period.localeCompare(b.period)
@@ -699,6 +767,321 @@ export class VaultStore {
     this.save();
   }
 
+  getAccountPools(): AccountPool[] {
+    this.reloadFromDisk();
+    return this.data.accountPools.map((pool) => this.safeAccountPool(pool));
+  }
+
+  getAccountPoolForConnector(id: string): AccountPoolForConnector {
+    const key = this.requireKey();
+    this.reloadFromDisk();
+    const pool = this.data.accountPools.find((item) => item.id === id);
+    if (!pool) throw notFound("Account pool not found", "account_pool_not_found");
+    return {
+      id: pool.id,
+      name: pool.name,
+      baseUrl: pool.baseUrl,
+      managementUrl: pool.managementUrl,
+      authsDirectory: pool.authsDirectory,
+      apiKey: pool.apiKey ? decryptString(key, pool.apiKey) : undefined,
+      managementSecret: pool.managementSecret ? decryptString(key, pool.managementSecret) : undefined
+    };
+  }
+
+  upsertAccountPool(input: AccountPoolInput): AccountPool {
+    const key = this.requireKey();
+    this.reloadFromDisk();
+    const now = new Date().toISOString();
+    const existing = input.id ? this.data.accountPools.find((pool) => pool.id === input.id) : undefined;
+    const apiKeyInput = typeof input.apiKey === "string" ? input.apiKey.trim() : undefined;
+    const managementSecretInput = typeof input.managementSecret === "string" ? input.managementSecret.trim() : undefined;
+    const record: AccountPoolRecord = {
+      id: existing?.id ?? randomUUID(),
+      name: stringValue(input.name).trim(),
+      kind: normalizeAccountPoolKind(input.kind),
+      baseUrl: normalizeBaseUrl(input.baseUrl),
+      managementUrl: normalizeOptionalUrl(input.managementUrl) ?? existing?.managementUrl,
+      authsDirectory: normalizeOptionalText(input.authsDirectory) ?? existing?.authsDirectory,
+      providerId: normalizeOptionalText(input.providerId) ?? existing?.providerId,
+      status: existing?.status ?? "unknown",
+      latencyMs: existing?.latencyMs,
+      lastCheckedAt: existing?.lastCheckedAt,
+      modelNames: existing?.modelNames ?? [],
+      lastError: existing?.lastError,
+      rootStatus: existing?.rootStatus,
+      modelsStatus: existing?.modelsStatus,
+      notes: normalizeOptionalText(input.notes) ?? existing?.notes,
+      apiKey: apiKeyInput ? encryptString(key, apiKeyInput) : existing?.apiKey,
+      apiKeyMasked: apiKeyInput ? maskKey(apiKeyInput) : existing?.apiKeyMasked,
+      managementSecret: managementSecretInput ? encryptString(key, managementSecretInput) : existing?.managementSecret,
+      managementSecretMasked: managementSecretInput ? maskKey(managementSecretInput) : existing?.managementSecretMasked,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+    if (!record.name) throw badRequest("Account pool name is required", "account_pool_name_required");
+
+    if (existing) {
+      this.data.accountPools = this.data.accountPools.map((pool) => pool.id === record.id ? record : pool);
+    } else {
+      this.data.accountPools.push(record);
+    }
+    this.save();
+    return this.safeAccountPool(record);
+  }
+
+  deleteAccountPool(id: string): void {
+    this.requireKey();
+    this.reloadFromDisk();
+    this.data.accountPools = this.data.accountPools.filter((pool) => pool.id !== id);
+    this.save();
+  }
+
+  ensureAccountPoolProvider(id: string): { pool: AccountPool; provider: ProviderSafe } {
+    const key = this.requireKey();
+    this.reloadFromDisk();
+    const pool = this.data.accountPools.find((item) => item.id === id);
+    if (!pool) throw notFound("Account pool not found", "account_pool_not_found");
+    if (!pool.apiKey) throw badRequest("Account pool proxy API key is required before creating a provider", "account_pool_api_key_required");
+
+    const now = new Date().toISOString();
+    const providerBaseUrl = cpaProviderBaseUrl(pool.baseUrl);
+    const proxyApiKey = decryptString(key, pool.apiKey);
+    let provider = pool.providerId ? this.data.providers.find((item) => item.id === pool.providerId) : undefined;
+
+    if (!provider) {
+      provider = {
+        id: randomUUID(),
+        name: `${pool.name} Provider`,
+        protocol: "openai-compatible",
+        baseUrl: providerBaseUrl,
+        currency: "USD",
+        balanceConfig: { ...defaultBalanceConfig },
+        apiKeys: [],
+        createdAt: now,
+        updatedAt: now,
+        isLocal: true,
+        status: pool.status
+      };
+      this.data.providers.push(provider);
+      pool.providerId = provider.id;
+    }
+
+    provider.name = provider.name || `${pool.name} Provider`;
+    provider.protocol = "openai-compatible";
+    provider.baseUrl = providerBaseUrl;
+    provider.currency = provider.currency || "USD";
+    provider.balanceConfig = provider.balanceConfig ?? { ...defaultBalanceConfig };
+    provider.isLocal = true;
+    provider.status = pool.status;
+    provider.latencyMs = pool.latencyMs;
+    provider.lastCheckedAt = pool.lastCheckedAt;
+    provider.updatedAt = now;
+
+    const firstKey = provider.apiKeys[0];
+    const keyHash = hashApiKey(key, proxyApiKey);
+    if (!firstKey) {
+      provider.apiKeys.push({
+        id: randomUUID(),
+        name: "CPA proxy",
+        apiKey: encryptString(key, proxyApiKey),
+        keyHash,
+        keyMasked: maskKey(proxyApiKey),
+        createdAt: now
+      });
+    } else if (firstKey.keyHash !== keyHash) {
+      firstKey.name = firstKey.name || "CPA proxy";
+      firstKey.apiKey = encryptString(key, proxyApiKey);
+      firstKey.keyHash = keyHash;
+      firstKey.keyMasked = maskKey(proxyApiKey);
+    }
+
+    pool.updatedAt = now;
+    this.save();
+    return { pool: this.safeAccountPool(pool), provider: this.safeProvider(provider) };
+  }
+
+  updateAccountPoolSyncResult(id: string, result: AccountPoolTestResult): AccountPool {
+    this.requireKey();
+    this.reloadFromDisk();
+    const pool = this.data.accountPools.find((item) => item.id === id);
+    if (!pool) throw notFound("Account pool not found", "account_pool_not_found");
+    pool.status = result.ok ? "available" : "unavailable";
+    pool.latencyMs = result.latencyMs;
+    pool.lastCheckedAt = result.checkedAt;
+    pool.modelNames = normalizeModelNames(result.modelNames);
+    pool.lastError = result.error;
+    pool.rootStatus = result.rootStatus;
+    pool.modelsStatus = result.modelsStatus;
+    pool.updatedAt = new Date().toISOString();
+
+    if (pool.providerId) {
+      const provider = this.data.providers.find((item) => item.id === pool.providerId);
+      if (provider) {
+        provider.status = pool.status;
+        provider.latencyMs = pool.latencyMs;
+        provider.lastCheckedAt = pool.lastCheckedAt;
+        provider.updatedAt = pool.updatedAt;
+      }
+    }
+
+    this.save();
+    return this.safeAccountPool(pool);
+  }
+
+  importAccountPoolModelsToProxyToken(
+    poolId: string,
+    input: { proxyTokenId: string; modelNames?: string[] }
+  ): AccountPoolImportResult {
+    this.requireKey();
+    this.reloadFromDisk();
+    const pool = this.data.accountPools.find((item) => item.id === poolId);
+    if (!pool) throw notFound("Account pool not found", "account_pool_not_found");
+    if (!pool.providerId) throw badRequest("Create or bind a provider before importing models", "account_pool_provider_required");
+    const provider = this.data.providers.find((item) => item.id === pool.providerId);
+    if (!provider) throw notFound("Linked provider not found", "provider_not_found");
+    if (provider.apiKeys.length === 0) throw notFound("Linked provider has no API keys", "api_key_not_found");
+
+    const token = this.data.proxyTokens.find((item) => item.id === input.proxyTokenId);
+    if (!token) throw notFound("Proxy token not found", "proxy_token_not_found");
+
+    const syncedModels = normalizeModelNames(pool.modelNames);
+    const requestedModels = input.modelNames && input.modelNames.length > 0
+      ? normalizeModelNames(input.modelNames)
+      : syncedModels;
+    if (requestedModels.length === 0) throw badRequest("No synced account pool models to import", "account_pool_models_required");
+
+    const syncedModelSet = new Set(syncedModels);
+    const unknownModel = requestedModels.find((model) => !syncedModelSet.has(model));
+    if (unknownModel) {
+      throw badRequest(`Model not found in account pool model list: ${unknownModel}`, "account_pool_model_not_found");
+    }
+
+    const requestedSet = new Set(requestedModels);
+    const before = token.allowedModels;
+    const kept = before.filter((rule) => !requestedSet.has(rule.publicModel));
+    const replacedCount = before.length - kept.length;
+    const apiKeyId = provider.apiKeys[0].id;
+    const newRules = requestedModels.map((model) => ({
+      publicModel: model,
+      providerId: provider.id,
+      apiKeyId,
+      upstreamModel: model
+    }));
+    token.allowedModels = normalizeModelRules([...kept, ...newRules]);
+    token.allowedProviderIds = [...new Set([...token.allowedProviderIds, provider.id])];
+    token.updatedAt = new Date().toISOString();
+    this.save();
+
+    return {
+      importedCount: newRules.length,
+      replacedCount,
+      skippedCount: 0,
+      modelNames: requestedModels,
+      token: this.safeProxyToken(token)
+    };
+  }
+
+  getModelCatalog(): ProviderModel[] {
+    this.reloadFromDisk();
+    return this.data.modelCatalog.map((model) => this.safeProviderModel(model));
+  }
+
+  getKnownProviderModelIds(providerId: string): string[] {
+    this.reloadFromDisk();
+    const models = [
+      ...this.data.modelCatalog
+        .filter((model) => model.providerId === providerId)
+        .map((model) => model.modelId),
+      ...this.data.proxyTokens.flatMap((token) =>
+        token.allowedModels
+          .filter((rule) => rule.providerId === providerId)
+          .map((rule) => rule.upstreamModel)
+      ),
+      ...this.data.usageEvents
+        .filter((event) => event.providerId === providerId && event.model)
+        .map((event) => event.model!)
+    ];
+    return normalizeModelNames(models);
+  }
+
+  upsertProviderModel(input: ProviderModelInput): ProviderModel {
+    this.requireKey();
+    this.reloadFromDisk();
+    const provider = this.data.providers.find((item) => item.id === input.providerId);
+    if (!provider) throw notFound("Provider not found", "provider_not_found");
+    const modelId = stringValue(input.modelId).trim();
+    if (!modelId) throw badRequest("Model ID is required", "model_id_required");
+    const now = new Date().toISOString();
+    const existing = input.id
+      ? this.data.modelCatalog.find((model) => model.id === input.id)
+      : this.data.modelCatalog.find((model) => model.providerId === provider.id && model.modelId === modelId);
+    const record: ProviderModelRecord = {
+      id: existing?.id ?? randomUUID(),
+      providerId: provider.id,
+      modelId,
+      displayName: normalizeOptionalText(input.displayName) ?? existing?.displayName,
+      aliases: normalizeStringList(input.aliases ?? existing?.aliases ?? []),
+      canonicalModelId: normalizeOptionalText(input.canonicalModelId) ?? existing?.canonicalModelId,
+      capabilities: normalizeModelCapabilities(input.capabilities ?? existing?.capabilities ?? []),
+      inputPrice: normalizeOptionalNumber(input.inputPrice ?? existing?.inputPrice),
+      outputPrice: normalizeOptionalNumber(input.outputPrice ?? existing?.outputPrice),
+      contextWindow: normalizeOptionalInteger(input.contextWindow ?? existing?.contextWindow),
+      source: normalizeProviderModelSource(input.source ?? existing?.source ?? "manual"),
+      lastSeenAt: existing?.lastSeenAt,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now
+    };
+
+    if (existing) {
+      this.data.modelCatalog = this.data.modelCatalog.map((model) => model.id === record.id ? record : model);
+    } else {
+      this.data.modelCatalog.push(record);
+    }
+    this.save();
+    return this.safeProviderModel(record);
+  }
+
+  upsertSyncedProviderModels(providerId: string, modelIds: string[], checkedAt: string): ProviderModel[] {
+    this.requireKey();
+    this.reloadFromDisk();
+    const provider = this.data.providers.find((item) => item.id === providerId);
+    if (!provider) throw notFound("Provider not found", "provider_not_found");
+    const normalizedIds = normalizeModelNames(modelIds);
+    const synced: ProviderModelRecord[] = [];
+    for (const modelId of normalizedIds) {
+      const existing = this.data.modelCatalog.find((model) => model.providerId === providerId && model.modelId === modelId);
+      if (existing) {
+        existing.source = existing.source === "manual" ? "manual" : "auto";
+        existing.lastSeenAt = checkedAt;
+        existing.updatedAt = checkedAt;
+        synced.push(existing);
+        continue;
+      }
+      const record: ProviderModelRecord = {
+        id: randomUUID(),
+        providerId,
+        modelId,
+        aliases: [],
+        capabilities: inferModelCapabilities(modelId),
+        source: "auto",
+        lastSeenAt: checkedAt,
+        createdAt: checkedAt,
+        updatedAt: checkedAt
+      };
+      this.data.modelCatalog.push(record);
+      synced.push(record);
+    }
+    this.save();
+    return synced.map((model) => this.safeProviderModel(model));
+  }
+
+  deleteProviderModel(id: string): void {
+    this.requireKey();
+    this.reloadFromDisk();
+    this.data.modelCatalog = this.data.modelCatalog.filter((model) => model.id !== id);
+    this.save();
+  }
+
   getLocalServices(): LocalService[] {
     this.reloadFromDisk();
     return this.data.localServices.map((service) => this.safeLocalService(service));
@@ -796,6 +1179,8 @@ export class VaultStore {
         storageVersion: 1,
         providers: [],
         proxyTokens: [],
+        accountPools: [],
+        modelCatalog: [],
         usageEvents: [],
         usageRollups: [],
         balanceSnapshots: [],
@@ -976,6 +1361,55 @@ export class VaultStore {
     };
   }
 
+  private safeAccountPool(pool: AccountPoolRecord): AccountPool {
+    return {
+      id: pool.id,
+      name: pool.name,
+      kind: pool.kind,
+      baseUrl: pool.baseUrl,
+      managementUrl: pool.managementUrl,
+      authsDirectory: pool.authsDirectory,
+      providerId: pool.providerId,
+      status: pool.status,
+      latencyMs: pool.latencyMs,
+      lastCheckedAt: pool.lastCheckedAt,
+      modelNames: normalizeModelNames(pool.modelNames),
+      lastError: pool.lastError,
+      rootStatus: pool.rootStatus,
+      modelsStatus: pool.modelsStatus,
+      notes: pool.notes,
+      hasApiKey: Boolean(pool.apiKey),
+      apiKeyMasked: pool.apiKey ? pool.apiKeyMasked ?? "configured" : undefined,
+      hasManagementSecret: Boolean(pool.managementSecret),
+      managementSecretMasked: pool.managementSecret ? pool.managementSecretMasked ?? "****" : undefined,
+      createdAt: pool.createdAt,
+      updatedAt: pool.updatedAt
+    };
+  }
+
+  private safeProviderModel(model: ProviderModelRecord, providers?: ProviderSafe[]): ProviderModel {
+    const providerName = providers?.find((provider) => provider.id === model.providerId)?.name
+      ?? this.data.providers.find((provider) => provider.id === model.providerId)?.name
+      ?? "Unknown provider";
+    return {
+      id: model.id,
+      providerId: model.providerId,
+      providerName,
+      modelId: model.modelId,
+      displayName: model.displayName,
+      aliases: model.aliases,
+      canonicalModelId: model.canonicalModelId,
+      capabilities: model.capabilities,
+      inputPrice: model.inputPrice,
+      outputPrice: model.outputPrice,
+      contextWindow: model.contextWindow,
+      source: model.source,
+      lastSeenAt: model.lastSeenAt,
+      createdAt: model.createdAt,
+      updatedAt: model.updatedAt
+    };
+  }
+
   private safeProxyToken(record: ProxyTokenRecord): ProxyTokenSafe {
     return {
       id: record.id,
@@ -1119,6 +1553,8 @@ function normalizeData(data: RawPersistedData): PersistedData {
     vault: data.vault,
     providers: Array.isArray(data.providers) ? data.providers.map(migrateProvider) : [],
     proxyTokens: Array.isArray(data.proxyTokens) ? data.proxyTokens.map(migrateProxyToken) : [],
+    accountPools: Array.isArray(data.accountPools) ? data.accountPools.map(migrateAccountPool) : [],
+    modelCatalog: Array.isArray(data.modelCatalog) ? data.modelCatalog.map(migrateProviderModel) : [],
     usageEvents: Array.isArray(data.usageEvents) ? data.usageEvents : [],
     usageRollups: dedupeRollups(Array.isArray(data.usageRollups) ? data.usageRollups : []),
     balanceSnapshots: Array.isArray(data.balanceSnapshots) ? data.balanceSnapshots : [],
@@ -1148,6 +1584,59 @@ function migrateProxyToken(raw: any): ProxyTokenRecord {
     createdAt: raw.createdAt || now,
     updatedAt: raw.updatedAt || raw.createdAt || now,
     lastUsedAt: raw.lastUsedAt
+  };
+}
+
+function migrateAccountPool(raw: any): AccountPoolRecord {
+  const now = new Date().toISOString();
+  const apiKey = raw.apiKey && typeof raw.apiKey === "object" && typeof raw.apiKey.ciphertext === "string"
+    ? raw.apiKey as EncryptedText
+    : undefined;
+  const managementSecret = raw.managementSecret && typeof raw.managementSecret === "object" && typeof raw.managementSecret.ciphertext === "string"
+    ? raw.managementSecret as EncryptedText
+    : undefined;
+  return {
+    id: raw.id || randomUUID(),
+    name: stringValue(raw.name).trim() || "Account pool",
+    kind: normalizeAccountPoolKind(raw.kind),
+    baseUrl: safeNormalizeBaseUrl(raw.baseUrl, "http://127.0.0.1:8317"),
+    managementUrl: safeNormalizeOptionalUrl(raw.managementUrl),
+    authsDirectory: normalizeOptionalText(raw.authsDirectory),
+    providerId: normalizeOptionalText(raw.providerId),
+    status: normalizeConnectionStatus(raw.status),
+    latencyMs: typeof raw.latencyMs === "number" ? raw.latencyMs : undefined,
+    lastCheckedAt: typeof raw.lastCheckedAt === "string" ? raw.lastCheckedAt : undefined,
+    modelNames: normalizeModelNames(Array.isArray(raw.modelNames) ? raw.modelNames : []),
+    lastError: typeof raw.lastError === "string" ? raw.lastError : undefined,
+    rootStatus: typeof raw.rootStatus === "number" ? raw.rootStatus : undefined,
+    modelsStatus: typeof raw.modelsStatus === "number" ? raw.modelsStatus : undefined,
+    notes: normalizeOptionalText(raw.notes),
+    apiKey,
+    apiKeyMasked: typeof raw.apiKeyMasked === "string" ? raw.apiKeyMasked : undefined,
+    managementSecret,
+    managementSecretMasked: typeof raw.managementSecretMasked === "string" ? raw.managementSecretMasked : undefined,
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || raw.createdAt || now
+  };
+}
+
+function migrateProviderModel(raw: any): ProviderModelRecord {
+  const now = new Date().toISOString();
+  return {
+    id: raw.id || randomUUID(),
+    providerId: stringValue(raw.providerId).trim(),
+    modelId: stringValue(raw.modelId).trim() || "unknown-model",
+    displayName: normalizeOptionalText(raw.displayName),
+    aliases: normalizeStringList(raw.aliases),
+    canonicalModelId: normalizeOptionalText(raw.canonicalModelId),
+    capabilities: normalizeModelCapabilities(Array.isArray(raw.capabilities) ? raw.capabilities : []),
+    inputPrice: normalizeOptionalNumber(raw.inputPrice),
+    outputPrice: normalizeOptionalNumber(raw.outputPrice),
+    contextWindow: normalizeOptionalInteger(raw.contextWindow),
+    source: normalizeProviderModelSource(raw.source),
+    lastSeenAt: typeof raw.lastSeenAt === "string" ? raw.lastSeenAt : undefined,
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || raw.createdAt || now
   };
 }
 
@@ -1431,6 +1920,79 @@ function normalizeBaseUrl(value: string): string {
   url.hash = "";
   url.search = "";
   return url.toString().replace(/\/$/, "");
+}
+
+function safeNormalizeBaseUrl(value: unknown, fallback: string): string {
+  try {
+    return normalizeBaseUrl(stringValue(value) || fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeOptionalUrl(value: unknown): string | undefined {
+  const text = stringValue(value).trim();
+  if (!text) return undefined;
+  return normalizeBaseUrl(text);
+}
+
+function safeNormalizeOptionalUrl(value: unknown): string | undefined {
+  try {
+    return normalizeOptionalUrl(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeOptionalText(value: unknown): string | undefined {
+  const text = stringValue(value).trim();
+  return text || undefined;
+}
+
+function normalizeAccountPoolKind(value: unknown): AccountPoolKind {
+  if (value === undefined || value === "cpa") return "cpa";
+  throw badRequest(`Unsupported account pool kind: ${String(value)}`, "unsupported_account_pool_kind");
+}
+
+function normalizeModelNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => stringValue(item).trim()).filter(Boolean))];
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => stringValue(item).trim()).filter(Boolean))];
+}
+
+function normalizeModelCapabilities(value: unknown): ModelCapability[] {
+  if (!Array.isArray(value)) return [];
+  const allowed = new Set<ModelCapability>(["text", "vision", "tool", "long-context", "reasoning"]);
+  return [...new Set(value.filter((item): item is ModelCapability => allowed.has(item as ModelCapability)))];
+}
+
+function normalizeProviderModelSource(value: unknown): ProviderModelSource {
+  return value === "auto" ? "auto" : "manual";
+}
+
+function normalizeOptionalNumber(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : undefined;
+}
+
+function normalizeOptionalInteger(value: unknown): number | undefined {
+  const numeric = normalizeOptionalNumber(value);
+  return numeric === undefined ? undefined : Math.floor(numeric);
+}
+
+function inferModelCapabilities(modelId: string): ModelCapability[] {
+  const lower = modelId.toLowerCase();
+  const capabilities = new Set<ModelCapability>(["text"]);
+  if (/vision|image|vl|omni|gpt-4o|gemini|claude-3|claude-4/.test(lower)) capabilities.add("vision");
+  if (/tool|function|gpt|claude|gemini|mistral|qwen/.test(lower)) capabilities.add("tool");
+  if (/reason|thinking|o\d|r1|deepseek|opus|sonnet/.test(lower)) capabilities.add("reasoning");
+  if (/1m|200k|128k|1000k|long|context|gemini-1\.5|gemini-2/.test(lower)) capabilities.add("long-context");
+  return Array.from(capabilities);
 }
 
 function normalizeProtocol(value: unknown): ApiProtocol {

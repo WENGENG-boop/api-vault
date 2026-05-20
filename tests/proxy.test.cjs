@@ -35,6 +35,10 @@ test("normalizes duplicated version path from third-party gateways", () => {
     buildUpstreamUrl("https://vendor.example/v1", normalizeProxySuffixPath("https://vendor.example/v1", "/v1/v1/messages"), ""),
     "https://vendor.example/v1/messages"
   );
+  assert.equal(
+    buildUpstreamUrl("https://vendor.example/openai/v1", normalizeProxySuffixPath("https://vendor.example/openai/v1", "/v1/chat/completions"), ""),
+    "https://vendor.example/openai/v1/chat/completions"
+  );
 });
 
 test("builds shared provider-level proxy base URL for OpenAI-compatible providers", () => {

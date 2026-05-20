@@ -1,11 +1,13 @@
 ﻿import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
-import { join, normalize, resolve } from "node:path";
+import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { basename, join, normalize, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import type { AddKeyInput, ApiKeyInput, LocalService, LocalServiceProtocol, ProviderInput, ProxyTokenInput, UsageEvent } from "../shared/types";
+import type { AccountPoolInput, AddKeyInput, ApiKeyInput, ApiProtocol, LocalService, LocalServiceProtocol, ProviderInput, ProviderModelInput, ProviderModelSyncResult, ProxyTokenInput, UsageEvent } from "../shared/types";
 import { syncBalance } from "../main/balance";
 import { CloudflaredManager } from "../main/cloudflared";
+import { testCpaConnection } from "../main/cpaConnector";
+import { extractModelNamesFromJson } from "../main/modelList";
 import {
   JSON_BODY_LIMIT_BYTES,
   readRequestBody,
@@ -16,7 +18,7 @@ import {
 import { buildUpstreamUrl, normalizeProxySuffixPath, ProxyServer } from "../main/proxy";
 import { VaultStore } from "../main/store";
 import { extractRequestModel, extractUsageFromResponse } from "../main/usage";
-import { AppError, notFound, serviceUnavailable, toAppError } from "../main/errors";
+import { AppError, badRequest, notFound, serviceUnavailable, toAppError } from "../main/errors";
 
 const DEFAULT_PORT = Number(process.env.PORT || 3210);
 const LISTEN_HOST = process.env.BIND_HOST || process.env.HOST || (process.env.API_VAULT_DOCKER === "1" ? "0.0.0.0" : "127.0.0.1");
@@ -313,6 +315,108 @@ async function handleApi(
     return;
   }
 
+  // Model Catalog
+  if (method === "GET" && url.pathname === "/api/model-catalog") {
+    sendJson(res, 200, store.getModelCatalog());
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/model-catalog/manual") {
+    const body = await readJsonBody<ProviderModelInput>(req);
+    const model = store.upsertProviderModel({ ...body, source: body.source ?? "manual" });
+    sendJson(res, 200, { model, state: getState() });
+    return;
+  }
+
+  const modelCatalogSync = url.pathname.match(/^\/api\/model-catalog\/sync-provider\/([^/]+)$/);
+  if (method === "POST" && modelCatalogSync) {
+    const providerId = decodeURIComponent(modelCatalogSync[1]);
+    const result = await syncProviderModelCatalog(store, providerId);
+    sendJson(res, 200, { result, state: getState() });
+    return;
+  }
+
+  const modelCatalogItem = url.pathname.match(/^\/api\/model-catalog\/([^/]+)$/);
+  if (modelCatalogItem && method === "POST") {
+    const body = await readJsonBody<ProviderModelInput>(req);
+    const model = store.upsertProviderModel({ ...body, id: decodeURIComponent(modelCatalogItem[1]) });
+    sendJson(res, 200, { model, state: getState() });
+    return;
+  }
+
+  if (modelCatalogItem && method === "DELETE") {
+    store.deleteProviderModel(decodeURIComponent(modelCatalogItem[1]));
+    sendJson(res, 200, getState());
+    return;
+  }
+
+  // Account Pools
+  if (method === "GET" && url.pathname === "/api/account-pools") {
+    sendJson(res, 200, store.getAccountPools());
+    return;
+  }
+
+  if (method === "POST" && url.pathname === "/api/account-pools") {
+    const body = await readJsonBody<AccountPoolInput & { createProvider?: boolean }>(req);
+    const pool = store.upsertAccountPool(body);
+    if (body.createProvider) {
+      store.ensureAccountPoolProvider(pool.id);
+    }
+    sendJson(res, 200, { pool: store.getAccountPools().find((item) => item.id === pool.id), state: getState() });
+    return;
+  }
+
+  const accountPoolDelete = url.pathname.match(/^\/api\/account-pools\/([^/]+)$/);
+  if (method === "DELETE" && accountPoolDelete) {
+    store.deleteAccountPool(decodeURIComponent(accountPoolDelete[1]));
+    sendJson(res, 200, getState());
+    return;
+  }
+
+  const accountPoolCreateProvider = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/create-provider$/);
+  if (method === "POST" && accountPoolCreateProvider) {
+    const result = store.ensureAccountPoolProvider(decodeURIComponent(accountPoolCreateProvider[1]));
+    sendJson(res, 200, { ...result, state: getState() });
+    return;
+  }
+
+  const accountPoolTest = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/test$/);
+  if (method === "POST" && accountPoolTest) {
+    const poolId = decodeURIComponent(accountPoolTest[1]);
+    const pool = store.getAccountPoolForConnector(poolId);
+    const result = await testCpaConnection({ baseUrl: pool.baseUrl, apiKey: pool.apiKey });
+    store.updateAccountPoolSyncResult(poolId, result);
+    sendJson(res, 200, { result, state: getState() });
+    return;
+  }
+
+  const accountPoolSync = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/sync-models$/);
+  if (method === "POST" && accountPoolSync) {
+    const poolId = decodeURIComponent(accountPoolSync[1]);
+    const pool = store.getAccountPoolForConnector(poolId);
+    const result = await testCpaConnection({ baseUrl: pool.baseUrl, apiKey: pool.apiKey });
+    store.updateAccountPoolSyncResult(poolId, result);
+    sendJson(res, 200, { result, state: getState() });
+    return;
+  }
+
+  const accountPoolImport = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/import-models-to-proxy-token$/);
+  if (method === "POST" && accountPoolImport) {
+    const body = await readJsonBody<{ proxyTokenId: string; modelNames?: string[] }>(req);
+    const result = store.importAccountPoolModelsToProxyToken(decodeURIComponent(accountPoolImport[1]), body);
+    sendJson(res, 200, { result, state: getState() });
+    return;
+  }
+
+  const accountPoolUploadAuth = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/upload-auth$/);
+  if (method === "POST" && accountPoolUploadAuth) {
+    const pool = store.getAccountPoolForConnector(decodeURIComponent(accountPoolUploadAuth[1]));
+    const body = await readJsonBody<{ fileName: string; content: string }>(req);
+    const result = writeAccountPoolAuthFile(pool.authsDirectory, body.fileName, body.content);
+    sendJson(res, 200, { result, state: getState() });
+    return;
+  }
+
   // ─── Local Services ───
   if (method === "GET" && url.pathname === "/api/local-services") {
     sendJson(res, 200, store.getLocalServices());
@@ -378,6 +482,149 @@ async function handleApi(
   }
 
   throw notFound("API route not found", "api_route_not_found");
+}
+
+function writeAccountPoolAuthFile(authsDirectory: string | undefined, fileName: string | undefined, content: string | undefined) {
+  const directory = authsDirectory?.trim();
+  if (!directory) throw badRequest("Auths directory is not configured for this account pool", "auths_directory_required");
+  const rawName = (fileName ?? "").trim();
+  if (!rawName) throw badRequest("Auth file name is required", "auth_file_name_required");
+  const safeName = basename(rawName).replace(/[^\w.-]/g, "_");
+  if (!safeName.toLowerCase().endsWith(".json")) throw badRequest("Auth file must use a .json extension", "auth_file_extension_required");
+  const text = typeof content === "string" ? content : "";
+  if (!text.trim()) throw badRequest("Auth file content is required", "auth_file_content_required");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw badRequest("Auth file content is not valid JSON", "auth_file_invalid_json");
+  }
+
+  const dir = resolve(directory);
+  const target = resolve(dir, safeName);
+  if (target !== dir && !target.startsWith(`${dir}${sep}`)) {
+    throw badRequest("Auth file path is outside the configured auths directory", "auth_file_path_invalid");
+  }
+
+  try {
+    mkdirSync(dir, { recursive: true });
+    const normalized = `${JSON.stringify(parsed, null, 2)}\n`;
+    writeFileSync(target, normalized, { encoding: "utf8" });
+    return {
+      fileName: safeName,
+      sizeBytes: Buffer.byteLength(normalized),
+      written: true
+    };
+  } catch (error) {
+    throw new AppError(`Unable to write auth file: ${(error as Error).message}`, 500, "auth_file_write_failed");
+  }
+}
+
+async function syncProviderModelCatalog(store: VaultStore, providerId: string): Promise<ProviderModelSyncResult> {
+  const checkedAt = new Date().toISOString();
+  const provider = store.getBalanceProvider(providerId);
+  const attempts = modelCatalogProbeAttempts(provider.baseUrl, provider.protocol, provider.apiKey);
+  let bestStatus: number | undefined;
+  let bestError: string | undefined;
+
+  for (const attempt of attempts) {
+    try {
+      const response = await fetch(attempt.url, {
+        method: "GET",
+        headers: attempt.headers,
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (!response.ok) {
+        bestStatus = response.status;
+        bestError = `HTTP ${response.status}`;
+        continue;
+      }
+      const json = await response.json();
+      const modelIds = extractModelNamesFromJson(json);
+      if (modelIds.length === 0) {
+        bestStatus = response.status;
+        bestError = "Model list is empty";
+        continue;
+      }
+      store.upsertSyncedProviderModels(provider.id, modelIds, checkedAt);
+      return {
+        providerId: provider.id,
+        providerName: provider.name,
+        ok: true,
+        status: response.status,
+        syncedCount: modelIds.length,
+        modelIds,
+        checkedAt
+      };
+    } catch (error) {
+      bestError = (error as Error).name === "AbortError" || (error as Error).name === "TimeoutError"
+        ? "Timeout (10s)"
+        : String((error as Error).message ?? error);
+    }
+  }
+
+  const knownModelIds = store.getKnownProviderModelIds(provider.id);
+  if (knownModelIds.length > 0) {
+    store.upsertSyncedProviderModels(provider.id, knownModelIds, checkedAt);
+    return {
+      providerId: provider.id,
+      providerName: provider.name,
+      ok: true,
+      status: bestStatus,
+      syncedCount: knownModelIds.length,
+      modelIds: knownModelIds,
+      checkedAt
+    };
+  }
+
+  return {
+    providerId: provider.id,
+    providerName: provider.name,
+    ok: false,
+    status: bestStatus,
+    syncedCount: 0,
+    modelIds: [],
+    error: bestError ?? "Unable to fetch model list",
+    checkedAt
+  };
+}
+
+function modelCatalogProbeAttempts(baseUrl: string, protocol: ApiProtocol, apiKey: string): Array<{ url: string; headers: Record<string, string> }> {
+  const normalized = baseUrl.replace(/\/+$/, "");
+  const rootBaseUrl = normalized.replace(/\/v1(?:beta)?$/i, "");
+  const headers = modelCatalogHeaders(normalized, protocol, apiKey);
+  const targets = protocol === "anthropic-compatible"
+    ? [`${rootBaseUrl}/v1/models`, `${normalized}/models`]
+    : [
+        `${normalized}/models`,
+        `${rootBaseUrl}/v1/models`,
+        `${rootBaseUrl}/v1beta/models`
+      ];
+  return uniqueStrings(targets).map((target) => ({ url: target, headers }));
+}
+
+function modelCatalogHeaders(baseUrl: string, protocol: ApiProtocol, apiKey: string): Record<string, string> {
+  const headers: Record<string, string> = { accept: "application/json" };
+  const host = safeHost(baseUrl);
+  if (protocol === "anthropic-compatible") {
+    headers["x-api-key"] = apiKey;
+    headers["anthropic-version"] = "2023-06-01";
+    return headers;
+  }
+  if (host.endsWith("googleapis.com")) {
+    headers["x-goog-api-key"] = apiKey;
+  }
+  headers.authorization = `Bearer ${apiKey}`;
+  return headers;
+}
+
+function safeHost(value: string): string {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 function serveStatic(pathname: string, res: ServerResponse) {
@@ -448,14 +695,6 @@ async function testUpstreamUrl(
   const serviceType = body.type ?? "openai-compatible";
   const shouldProbeModels = serviceType !== "custom";
   const rootBaseUrl = baseUrl.replace(/\/v1$/, "");
-  const targets = !shouldProbeModels
-    ? [baseUrl]
-    : protocol === "anthropic-compatible"
-    ? [`${rootBaseUrl}/v1/models`, `${baseUrl}/models`, baseUrl]
-    : protocol === "openai-anthropic-compatible"
-    ? [`${baseUrl}/models`, `${rootBaseUrl}/v1/models`, baseUrl]
-    : [`${baseUrl}/models`, `${rootBaseUrl}/v1/models`, baseUrl];
-
   const headers: Record<string, string> = { accept: "application/json" };
   const localApiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
   if (localApiKey) {
@@ -466,12 +705,37 @@ async function testUpstreamUrl(
       headers.authorization = `Bearer ${localApiKey}`;
     }
   }
-  const probeAttempts = targets.flatMap((target) => {
-    const attempts: Array<{ target: string; headers: Record<string, string> }> = [{ target, headers }];
+
+  const modelTargets = protocol === "anthropic-compatible"
+    ? [`${rootBaseUrl}/v1/models`, `${baseUrl}/models`]
+    : protocol === "openai-anthropic-compatible"
+    ? [`${baseUrl}/models`, `${rootBaseUrl}/v1/models`, baseUrl]
+    : [`${baseUrl}/models`, `${rootBaseUrl}/v1/models`, baseUrl];
+  const baseAttempts: ProbeAttempt[] = shouldProbeModels
+    ? uniqueStrings(modelTargets).map((target) => ({ target, method: "GET", headers }))
+    : [{ target: baseUrl, method: "GET", headers }];
+
+  if (protocol === "anthropic-compatible" && shouldProbeModels) {
+    for (const target of anthropicMessagesProbeTargets(baseUrl)) {
+      baseAttempts.push({
+        target,
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: "{}"
+      });
+    }
+  }
+
+  const probeAttempts = baseAttempts.flatMap((attempt) => {
+    const attempts: ProbeAttempt[] = [attempt];
     if (protocol === "anthropic-compatible" || protocol === "openai-anthropic-compatible") {
       attempts.push({
-        target,
-        headers: { accept: "application/json", "anthropic-version": "2023-06-01" }
+        ...attempt,
+        headers: {
+          accept: "application/json",
+          "anthropic-version": "2023-06-01",
+          ...(attempt.method === "POST" ? { "content-type": "application/json" } : {})
+        }
       });
     }
     return attempts;
@@ -482,12 +746,13 @@ async function testUpstreamUrl(
   let bestStatus: number | undefined;
   let bestLatencyMs = 0;
   let bestError: string | undefined;
-  for (const { target, headers: attemptHeaders } of probeAttempts) {
+  for (const { target, method, headers: attemptHeaders, body } of probeAttempts) {
     const attemptStarted = Date.now();
     try {
       const response = await fetch(target, {
-        method: "GET",
+        method,
         headers: attemptHeaders,
+        body,
         signal: AbortSignal.timeout(timeoutMs)
       });
       const latencyMs = Date.now() - attemptStarted;
@@ -498,10 +763,7 @@ async function testUpstreamUrl(
         let modelNames: string[] | undefined;
         if (response.status < 400) {
           try {
-            const json = await response.clone().json() as { data?: Array<{ id: string }> };
-            if (Array.isArray(json.data)) {
-              modelNames = json.data.map((m) => m.id).slice(0, 10);
-            }
+            modelNames = extractModelNamesFromJson(await response.clone().json()).slice(0, 10);
           } catch {
             // Response wasn't JSON or didn't have data array
           }
@@ -537,6 +799,26 @@ async function testUpstreamUrl(
     error: bestError ?? "Connection failed",
     checkedAt: new Date().toISOString()
   };
+}
+
+interface ProbeAttempt {
+  target: string;
+  method: "GET" | "POST";
+  headers: Record<string, string>;
+  body?: string;
+}
+
+function anthropicMessagesProbeTargets(baseUrl: string): string[] {
+  const normalized = baseUrl.replace(/\/+$/, "");
+  const rootBaseUrl = normalized.replace(/\/v1$/i, "");
+  return uniqueStrings([
+    `${rootBaseUrl}/v1/messages`,
+    `${normalized}/messages`
+  ]);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 async function handleLocalServiceProxy(

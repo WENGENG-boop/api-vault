@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { ApiProtocol, GatewayType, UsageEvent } from "../shared/types";
 import { buildProviderProxyBaseUrl, type ProviderForProxy, type VaultStore } from "./store";
 import { extractRequestModel, extractUsageFromResponse, extractUsageFromSSE } from "./usage";
-import { toAppError } from "./errors";
+import { badRequest, toAppError } from "./errors";
 import {
   DEFAULT_BODY_LIMIT_BYTES,
   isHopByHopHeader,
@@ -14,6 +14,7 @@ import {
   toArrayBuffer,
   toResponseHeaders
 } from "./httpUtils";
+import { convertProxyResponse, prepareMultimodalProxyRequest, singleProtocolForProvider } from "./multimodal";
 
 export class ProxyServer {
   private server?: Server;
@@ -148,17 +149,24 @@ export class ProxyServer {
 
     const body = await readRequestBody(req);
     const parsedBody = parseJsonObject(body);
-    const normalizedSuffixPath = normalizeProxySuffixPath(provider.baseUrl, suffixPath);
+    const isStreamRequest = parsedBody?.stream === true;
+    let prepared = await prepareMultimodalProxyRequest({
+      body,
+      suffixPath,
+      requestedProtocol: concreteProtocol(effectiveProtocol),
+      targetProtocol: concreteProtocol(effectiveProtocol)
+    });
+    if (isStreamRequest && prepared.targetProtocol === "openai-compatible") {
+      prepared = { ...prepared, body: injectStreamOptions(prepared.body, parsedBody) };
+    }
+    const finalBody = prepared.body;
+    const normalizedSuffixPath = normalizeProxySuffixPath(provider.baseUrl, prepared.suffixPath);
     const upstreamUrl = buildUpstreamUrl(provider.baseUrl, normalizedSuffixPath, incomingUrl.search);
     const headers = buildUpstreamHeaders(req.headers, effectiveProtocol, provider.apiKey);
     const started = Date.now();
     const startedAt = new Date(started).toISOString();
     this.store.markApiKeyUsed(provider.id, provider.keyId, startedAt);
 
-    const isStreamRequest = parsedBody?.stream === true;
-    const finalBody = isStreamRequest && effectiveProtocol === "openai-compatible"
-      ? injectStreamOptions(body, parsedBody)
-      : body;
     const requestModel = extractRequestModel(finalBody);
 
     try {
@@ -188,7 +196,7 @@ export class ProxyServer {
             const sseBuffer = Buffer.concat(sseChunks);
             const usage = extractUsageFromSSE(
               effectiveProtocol,
-              body,
+              finalBody,
               sseBuffer,
               provider.balanceConfig.responseCostPath
             );
@@ -261,7 +269,7 @@ export class ProxyServer {
 
       const usage = extractUsageFromResponse(
         effectiveProtocol,
-        body,
+        finalBody,
         responseBody,
         provider.balanceConfig.responseCostPath
       );
@@ -314,7 +322,7 @@ export class ProxyServer {
     const started = Date.now();
     const startedAt = new Date(started).toISOString();
     const endpoint = `/proxy/v1${suffixPath}`;
-    const proxyTokenSecret = extractBearerToken(req.headers);
+    const proxyTokenSecret = extractProxyToken(req.headers);
     const isModelsPath = suffixPath === "/models" || suffixPath === "/models/" || suffixPath === "/v1/models" || suffixPath === "/v1/models/";
     if (!proxyTokenSecret?.startsWith("proxy_") && isModelsPath) {
       const state = this.store.getState();
@@ -385,10 +393,25 @@ export class ProxyServer {
       }
 
       upstreamModel = resolution.upstreamModel ?? requestModel;
-      const finalBody = replaceRequestModel(body, upstreamModel);
-      const normalizedSuffixPath = normalizeProxySuffixPath(provider.baseUrl, suffixPath);
+      const requestedProtocol = concreteProtocol(inferProtocolFromRequest(req.headers, suffixPath));
+      const targetProtocol = singleProtocolForProvider(provider.protocol, requestedProtocol);
+      if (isStreamRequest && requestedProtocol !== targetProtocol) {
+        throw badRequest("Streaming protocol conversion is not supported yet. Disable stream for cross OpenAI/Anthropic proxy requests.", "stream_protocol_conversion_not_supported");
+      }
+      let prepared = await prepareMultimodalProxyRequest({
+        body,
+        suffixPath,
+        requestedProtocol,
+        targetProtocol,
+        upstreamModel
+      });
+      if (isStreamRequest && prepared.targetProtocol === "openai-compatible") {
+        prepared = { ...prepared, body: injectStreamOptions(prepared.body) };
+      }
+      const finalBody = prepared.body;
+      const normalizedSuffixPath = normalizeProxySuffixPath(provider.baseUrl, prepared.suffixPath);
       const upstreamUrl = buildUpstreamUrl(provider.baseUrl, normalizedSuffixPath, incomingUrl.search);
-      const protocol = effectiveProtocolForProvider(provider.protocol, req.headers, suffixPath);
+      const protocol = prepared.targetProtocol;
       const headers = buildUpstreamHeaders(req.headers, protocol, provider.apiKey);
       this.store.markApiKeyUsed(provider.id, provider.keyId, startedAt);
       this.store.markProxyTokenUsed(resolution.token.id, startedAt);
@@ -441,11 +464,14 @@ export class ProxyServer {
         return;
       }
 
-      const responseBody = Buffer.from(await upstream.arrayBuffer());
+      const rawResponseBody = Buffer.from(await upstream.arrayBuffer());
+      const responseBody = upstream.ok
+        ? convertProxyResponse(rawResponseBody, prepared.targetProtocol, prepared.responseProtocol)
+        : rawResponseBody;
       responseHeaders["content-length"] = String(responseBody.length);
       res.writeHead(upstream.status, responseHeaders);
       res.end(responseBody);
-      const usage = extractUsageFromResponse(protocol, finalBody, responseBody, provider.balanceConfig.responseCostPath);
+      const usage = extractUsageFromResponse(protocol, finalBody, rawResponseBody, provider.balanceConfig.responseCostPath);
       safeAppendUsage(this.store, {
         ...baseUsageEvent({ provider, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? upstreamModel ?? requestModel }),
         proxyTokenId,
@@ -520,6 +546,10 @@ function extractBearerToken(headers: IncomingHttpHeaders): string | undefined {
   return match?.[1]?.trim();
 }
 
+function extractProxyToken(headers: IncomingHttpHeaders): string | undefined {
+  return extractBearerToken(headers) ?? firstHeader(headers["x-api-key"])?.trim();
+}
+
 function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -559,6 +589,10 @@ function inferProtocolFromRequest(headers: IncomingHttpHeaders, suffixPath: stri
   if (firstHeader(headers.authorization)) return "openai-compatible";
   if (firstHeader(headers["x-api-key"]) || firstHeader(headers["api-key"]) || firstHeader(headers["x-provider-api-key"])) return "anthropic-compatible";
   return undefined;
+}
+
+function concreteProtocol(protocol: ApiProtocol | undefined): "openai-compatible" | "anthropic-compatible" {
+  return protocol === "anthropic-compatible" ? "anthropic-compatible" : "openai-compatible";
 }
 
 function parseLegacyKeyRoute(suffixPath: string): { keyId: string; suffixPath: string } | undefined {
@@ -634,6 +668,14 @@ export function normalizeProxySuffixPath(baseUrl: string, suffixPath: string): s
   const suffix = suffixPath.startsWith("/") ? suffixPath : `/${suffixPath}`;
   const normalizedSuffix = collapseDuplicateLeadingVersion(suffix);
   if (!basePath) return normalizedSuffix;
+  const baseVersion = basePath.match(/\/(v\d+(?:\.\d+)?)$/i)?.[1];
+  if (
+    baseVersion &&
+    basePath.toLowerCase() !== `/${baseVersion.toLowerCase()}` &&
+    normalizedSuffix.toLowerCase().startsWith(`/${baseVersion.toLowerCase()}/`)
+  ) {
+    return normalizedSuffix.slice(baseVersion.length + 1) || "/";
+  }
   const duplicated = `${basePath}${basePath}/`;
   if (normalizedSuffix.startsWith(duplicated)) {
     return `${basePath}${normalizedSuffix.slice(duplicated.length - 1)}`;
