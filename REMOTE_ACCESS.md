@@ -74,3 +74,15 @@ Use nginx, Caddy, or Traefik for HTTPS. Recommended policy:
 - Public proxy errors are sanitized.
 - Proxy tokens can be disabled, deleted, or regenerated.
 - Rate limits are enforced per proxy token in the running process.
+
+
+## Cloudflared Troubleshooting
+
+- Install binary: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+- Start tunnel from UI Local Services page.
+- Stop tunnel from UI before changing port/protocol settings.
+- If missingBinary=true: confirm cloudflared --version works in your shell.
+- If TUNNEL_URL_NOT_FOUND: check cloudflared logs in /api/cloudflared/logs and verify local target port is reachable.
+- If START_TIMEOUT: check firewall/proxy rules and confirm local service is listening.
+- If port is occupied: update target port to an available local port and restart tunnel.
+

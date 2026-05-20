@@ -333,11 +333,44 @@ export interface LocalService {
 
 export interface CloudflaredStatus {
   running: boolean;
+  phase?: "idle" | "starting" | "running" | "stopping" | "error";
   publicUrl?: string;
+  startedAt?: string;
+  lastExitAt?: string;
+  lastExitCode?: number;
   error?: string;
   missingBinary?: boolean;
   installUrl?: string;
 }
+
+export interface CloudflaredConfig {
+  targetPort?: number;
+  protocol?: "http" | "https";
+  hostname?: string;
+  noAutoUpdate?: boolean;
+}
+
+export interface CloudflaredLogEntry {
+  ts: string;
+  level: "info" | "warn" | "error";
+  stream: "stdout" | "stderr" | "system";
+  message: string;
+}
+
+export type CloudflaredResultCode =
+  | "OK"
+  | "MANUAL_STOP"
+  | "MISSING_BINARY"
+  | "START_TIMEOUT"
+  | "TUNNEL_URL_NOT_FOUND"
+  | "PROCESS_EXITED"
+  | "PROCESS_ERROR"
+  | "MANAGER_UNAVAILABLE"
+  | "INVALID_CONFIG";
+
+export type CloudflaredApiResponse =
+  | { ok: true; code: "OK" | "MANUAL_STOP"; status: CloudflaredStatus; config?: CloudflaredConfig; logs?: CloudflaredLogEntry[] }
+  | { ok: false; code: Exclude<CloudflaredResultCode, "OK">; message: string; status: CloudflaredStatus; config?: CloudflaredConfig; logs?: CloudflaredLogEntry[] };
 
 export interface BalanceTestResult {
   snapshot: BalanceSnapshot;

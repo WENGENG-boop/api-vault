@@ -478,3 +478,30 @@ Authorization: Bearer proxy_xxx
 ```
 
 API Vault 会验证 Proxy Token，按模型映射选择内部 Provider 和真实模型 ID，在服务端注入加密保存的真实 API Key，转发请求并记录 provider、key、model、token、状态码和延迟。公网部署说明见 [REMOTE_ACCESS.md](./REMOTE_ACCESS.md)，里面包含 Cloudflare Tunnel、Tailscale 和反向代理建议。
+
+
+## Cloudflared Tunnel（本地服务页）
+
+本地服务页面支持 Cloudflared Tunnel，包含明确阶段：idle、starting、unning、stopping、error。
+
+Cloudflared 接口：
+- GET /api/cloudflared/status
+- POST /api/cloudflared/start
+- POST /api/cloudflared/stop
+- GET /api/cloudflared/logs?limit=200
+
+启动配置（白名单参数）：
+- 	argetPort（默认代理端口）
+- protocol：http 或 https
+- hostname（可选）
+- 
+oAutoUpdate（可选）
+
+常见结构化错误码：
+- MISSING_BINARY
+- START_TIMEOUT
+- TUNNEL_URL_NOT_FOUND
+- PROCESS_EXITED
+- PROCESS_ERROR
+- MANAGER_UNAVAILABLE
+

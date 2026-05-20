@@ -16,6 +16,7 @@ import type {
   BalanceConfig,
   BalanceSnapshot,
   CloudflaredStatus,
+  CloudflaredConfig,
   DashboardTotals,
   LocalService,
   LocalServiceProtocol,
@@ -183,6 +184,7 @@ interface PersistedData {
   balanceSnapshots: BalanceSnapshot[];
   localServices: LocalServiceRecord[];
   cloudflaredPublicUrl?: string;
+  cloudflaredConfig?: CloudflaredConfig;
 }
 
 interface RawPersistedData extends Partial<PersistedData> {
@@ -1165,6 +1167,16 @@ export class VaultStore {
     return this.data.cloudflaredPublicUrl;
   }
 
+  getCloudflaredConfig(): CloudflaredConfig | undefined {
+    return this.data.cloudflaredConfig;
+  }
+
+  setCloudflaredConfig(config: CloudflaredConfig): void {
+    this.reloadFromDisk();
+    this.data.cloudflaredConfig = config;
+    this.save();
+  }
+
   setCloudflaredPublicUrl(url: string | undefined): void {
     this.reloadFromDisk();
     this.data.cloudflaredPublicUrl = url;
@@ -1559,7 +1571,8 @@ function normalizeData(data: RawPersistedData): PersistedData {
     usageRollups: dedupeRollups(Array.isArray(data.usageRollups) ? data.usageRollups : []),
     balanceSnapshots: Array.isArray(data.balanceSnapshots) ? data.balanceSnapshots : [],
     localServices: Array.isArray(data.localServices) ? data.localServices.map(migrateLocalService) : [],
-    cloudflaredPublicUrl: data.cloudflaredPublicUrl
+    cloudflaredPublicUrl: data.cloudflaredPublicUrl,
+    cloudflaredConfig: data.cloudflaredConfig
   };
 }
 

@@ -487,3 +487,30 @@ Authorization: Bearer proxy_xxx
 ```
 
 API Vault validates the proxy token, applies model/provider permissions and rate limits, injects the real encrypted provider key internally, forwards the request, and records usage. See [REMOTE_ACCESS.md](./REMOTE_ACCESS.md) for Cloudflare Tunnel, Tailscale, and reverse proxy deployment notes.
+
+
+## Cloudflared Tunnel (Local Services)
+
+Local Services page supports Cloudflared Tunnel with process phases: idle, starting, unning, stopping, error.
+
+Cloudflared API endpoints:
+- GET /api/cloudflared/status
+- POST /api/cloudflared/start
+- POST /api/cloudflared/stop
+- GET /api/cloudflared/logs?limit=200
+
+Start payload config (whitelisted):
+- 	argetPort (defaults to proxy port)
+- protocol: http or https
+- hostname (optional)
+- 
+oAutoUpdate (optional)
+
+Common structured error codes include:
+- MISSING_BINARY
+- START_TIMEOUT
+- TUNNEL_URL_NOT_FOUND
+- PROCESS_EXITED
+- PROCESS_ERROR
+- MANAGER_UNAVAILABLE
+
