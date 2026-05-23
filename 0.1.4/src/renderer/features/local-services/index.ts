@@ -1,0 +1,1 @@
+export { LocalServicesPage } from "./page";
