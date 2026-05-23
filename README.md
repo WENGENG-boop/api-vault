@@ -59,7 +59,7 @@ API Vault injects the real key, forwards the request, records the result, and re
 
 ## Quick Start
 
-### Docker (recommended)
+### Docker
 
 ```bash
 docker compose up -d --build
@@ -67,7 +67,7 @@ docker compose up -d --build
 
 Open http://localhost:3210
 
-### Windows
+### Windows (recommended)
 
 Double-click `start-api-vault.bat` (requires [Node.js LTS](https://nodejs.org/))
 
