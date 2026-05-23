@@ -1,7 +1,9 @@
 # API Vault
 
 [中文说明](README.zh-CN.md)
+
 https://github.com/user-attachments/assets/6177b8bd-7224-4616-b868-cac45d7ffc14
+
 A self-hosted API key management dashboard with built-in reverse proxy, usage tracking, and balance sync. Manage multiple AI providers and API keys from one local interface.
 
 ## Why
