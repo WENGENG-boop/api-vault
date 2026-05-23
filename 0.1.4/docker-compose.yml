@@ -1,0 +1,17 @@
+services:
+  api-vault:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: api-vault
+    restart: unless-stopped
+    ports:
+      - "3210:3210"
+    environment:
+      PORT: "3210"
+      HOST: "0.0.0.0"
+      API_VAULT_DOCKER: "1"
+      API_VAULT_NO_OPEN: "1"
+      NODE_ENV: production
+    volumes:
+      - ./.api-vault:/app/.api-vault
