@@ -76,7 +76,11 @@ export const apiClient: ApiVaultClient = window.apiVault ?? {
     method: "POST",
     body: { password }
   }),
-  lockVault: () => request<AppState>("/api/vault/lock", { method: "POST" }),
+  lockVault: async () => {
+    const state = await request<AppState>("/api/vault/lock", { method: "POST" });
+    clearAdminToken();
+    return state;
+  },
   saveProviderMeta: (provider: ProviderInput) => request<AppState>("/api/providers", {
     method: "POST",
     body: provider
@@ -209,21 +213,53 @@ export async function copyTextToClipboard(text: string): Promise<CopyResult> {
 }
 
 async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+  const headers: Record<string, string> = {};
+  const adminToken = getAdminToken();
+  if (adminToken) headers["x-api-vault-admin"] = adminToken;
+  if (options.body !== undefined) headers["content-type"] = "application/json";
+
   const response = await fetch(path, {
     method: options.method ?? "GET",
-    headers: options.body === undefined ? undefined : { "content-type": "application/json" },
+    headers: Object.keys(headers).length ? headers : undefined,
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
   });
 
   const text = await response.text();
   const data = text ? JSON.parse(text) : undefined;
   if (!response.ok) {
+    if (response.status === 401 && path !== "/api/vault/unlock" && path !== "/api/vault/setup") clearAdminToken();
     const message = data && typeof data === "object" && "error" in data
       ? String((data as { error: unknown }).error)
       : `Request failed with ${response.status}`;
     throw new Error(message);
   }
+  rememberAdminToken(data);
   return data as T;
+}
+
+const ADMIN_TOKEN_STORAGE_KEY = "api-vault-admin-token";
+
+function getAdminToken(): string | undefined {
+  try {
+    return window.sessionStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function rememberAdminToken(data: unknown): void {
+  if (!data || typeof data !== "object" || !("adminToken" in data)) return;
+  const token = (data as { adminToken?: unknown }).adminToken;
+  if (typeof token !== "string" || !token) return;
+  try {
+    window.sessionStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, token);
+  } catch {}
+}
+
+function clearAdminToken(): void {
+  try {
+    window.sessionStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  } catch {}
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {

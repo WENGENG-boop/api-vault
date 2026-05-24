@@ -1,1 +1,1 @@
-export type AppTab = "dashboard" | "providers" | "models" | "account-pools" | "proxy-tokens" | "local-services" | "usage" | "billing";
+export type AppTab = "dashboard" | "providers" | "status" | "models" | "account-pools" | "proxy-tokens" | "local-services" | "usage" | "billing";

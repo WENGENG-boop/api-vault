@@ -67,6 +67,10 @@ export class ProxyServer {
       res.end(JSON.stringify({ error: "Unknown proxy route" }));
       return;
     }
+    if (providerMatch && extractProxyToken(req.headers)?.startsWith("proxy_")) {
+      await this.handlePublicProxy(req, res, incomingUrl, providerMatch[2] ?? "/", decodeURIComponent(providerMatch[1]));
+      return;
+    }
 
     let provider: ProviderForProxy;
     let suffixPath: string;
@@ -318,10 +322,10 @@ export class ProxyServer {
     }
   }
 
-  private async handlePublicProxy(req: IncomingMessage, res: ServerResponse, incomingUrl: URL, suffixPath: string): Promise<void> {
+  private async handlePublicProxy(req: IncomingMessage, res: ServerResponse, incomingUrl: URL, suffixPath: string, scopedProviderId?: string): Promise<void> {
     const started = Date.now();
     const startedAt = new Date(started).toISOString();
-    const endpoint = `/proxy/v1${suffixPath}`;
+    const endpoint = scopedProviderId ? `/proxy/${scopedProviderId}${suffixPath}` : `/proxy/v1${suffixPath}`;
     const proxyTokenSecret = extractProxyToken(req.headers);
     const isModelsPath = suffixPath === "/models" || suffixPath === "/models/" || suffixPath === "/v1/models" || suffixPath === "/v1/models/";
     if (!proxyTokenSecret?.startsWith("proxy_") && isModelsPath) {
@@ -352,7 +356,7 @@ export class ProxyServer {
       const parsedBody = parseJsonObject(body);
       requestModel = extractRequestModel(body);
       const isStreamRequest = parsedBody?.stream === true;
-      const explicitProviderId = firstHeader(req.headers["x-provider-id"])?.trim();
+      const explicitProviderId = scopedProviderId ?? firstHeader(req.headers["x-provider-id"])?.trim();
       if (isModelsPath) {
         const token = this.store.getProxyTokenForSecret(proxyTokenSecret);
         proxyTokenId = token.id;

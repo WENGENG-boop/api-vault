@@ -23,7 +23,8 @@
       "Bash(findstr \":5173\")",
       "Bash(taskkill //F //PID 11860)",
       "Bash(npm test *)",
-      "Bash(npx jest *)"
+      "Bash(npx jest *)",
+      "Bash(node --test tests/statusStats.test.cjs)"
     ]
   }
 }

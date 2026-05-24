@@ -19,17 +19,24 @@ async function close(server) {
   }
 }
 
+const adminTokens = new Map();
+
 async function requestJson(baseUrl, route, options = {}) {
+  const headers = { ...(options.headers || (options.body === undefined ? {} : { "content-type": "application/json" })) };
+  const adminToken = adminTokens.get(baseUrl);
+  if (adminToken && !headers["x-api-vault-admin"]) headers["x-api-vault-admin"] = adminToken;
   const response = await fetch(`${baseUrl}${route}`, {
     method: options.method || "GET",
-    headers: options.headers || (options.body === undefined ? undefined : { "content-type": "application/json" }),
+    headers: Object.keys(headers).length ? headers : undefined,
     body: options.rawBody ?? (options.body === undefined ? undefined : JSON.stringify(options.body))
   });
   const text = await response.text();
+  const data = text ? JSON.parse(text) : undefined;
+  if (data?.adminToken) adminTokens.set(baseUrl, data.adminToken);
   return {
     status: response.status,
     ok: response.ok,
-    data: text ? JSON.parse(text) : undefined
+    data
   };
 }
 
@@ -200,14 +207,23 @@ test("HTTP API manages vault, providers, proxy usage, and billing sync", async (
     assert.match(result.data.secret, /^proxy_/);
     assert.equal(result.data.state.proxyTokens.length, 1);
     assert.equal(JSON.stringify(result.data.state).includes(result.data.secret), false);
+    const proxyTokenSecret = result.data.secret;
 
     const publicProxy = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/v1/chat/completions`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${result.data.secret}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${proxyTokenSecret}` },
       body: JSON.stringify({ model: "public-chat", messages: [{ role: "user", content: "remote" }] })
     });
     assert.equal(publicProxy.status, 200);
     assert.equal((await publicProxy.json()).usage.total_tokens, 18);
+
+    const providerScopedPublicProxy = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/${provider.id}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${proxyTokenSecret}` },
+      body: JSON.stringify({ model: "public-chat", messages: [{ role: "user", content: "remote scoped" }] })
+    });
+    assert.equal(providerScopedPublicProxy.status, 200);
+    assert.equal((await providerScopedPublicProxy.json()).usage.total_tokens, 18);
 
     result = await requestJson(apiBase, `/api/providers/${provider.id}/test-balance`, { method: "POST" });
     assert.equal(result.status, 200);
@@ -216,7 +232,7 @@ test("HTTP API manages vault, providers, proxy usage, and billing sync", async (
 
     result = await requestJson(apiBase, "/api/state");
     assert.equal(result.status, 200);
-    assert.equal(result.data.usageEvents.length, 4);
+    assert.equal(result.data.usageEvents.length, 5);
     const publicEvent = result.data.usageEvents.find((event) => event.gatewayType === "public-proxy");
     assert.equal(publicEvent.proxyTokenName, "ci client");
     assert.equal(publicEvent.model, "vendor-model");
@@ -232,7 +248,7 @@ test("HTTP API manages vault, providers, proxy usage, and billing sync", async (
     assert.equal(key1Event.realCost, 0.0123);
     assert.equal(key1Event.currency, "credits");
     assert.equal(result.data.balanceSnapshots.length, 1);
-    assert.equal(upstreamHits.length, 5);
+    assert.equal(upstreamHits.length, 6);
 
     const persisted = fs.readFileSync(path.join(tempDir, "vault.json"), "utf8");
     assert.equal(persisted.includes("sk-real"), false);
@@ -256,8 +272,8 @@ test("HTTP API returns specific status codes for invalid inputs", async () => {
 
   try {
     let result = await requestJson(apiBase, "/api/nope");
-    assert.equal(result.status, 404);
-    assert.equal(result.data.code, "api_route_not_found");
+    assert.equal(result.status, 401);
+    assert.equal(result.data.code, "admin_session_required");
 
     result = await requestJson(apiBase, "/api/vault/setup", {
       method: "POST",
@@ -281,6 +297,10 @@ test("HTTP API returns specific status codes for invalid inputs", async () => {
     });
     assert.equal(result.status, 200);
 
+    result = await requestJson(apiBase, "/api/nope");
+    assert.equal(result.status, 404);
+    assert.equal(result.data.code, "api_route_not_found");
+
     result = await requestJson(apiBase, "/api/providers/add-key", {
       method: "POST",
       body: {
@@ -294,6 +314,28 @@ test("HTTP API returns specific status codes for invalid inputs", async () => {
     });
     assert.equal(result.status, 400);
     assert.equal(result.data.code, "api_key_required");
+
+    const unauthenticatedState = await fetch(`${apiBase}/api/state`);
+    assert.equal(unauthenticatedState.status, 200);
+    const unauthenticatedStateJson = await unauthenticatedState.json();
+    assert.equal(unauthenticatedStateJson.unlocked, false);
+    assert.deepEqual(unauthenticatedStateJson.providers, []);
+
+    const unauthenticatedAdminWrite = await fetch(`${apiBase}/api/providers/add-key`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        providerName: "No Admin Session",
+        keyName: "no-session",
+        protocol: "openai-compatible",
+        baseUrl: "https://example.com/v1",
+        currency: "USD",
+        apiKey: "sk-test",
+        balanceConfig: { enabled: false }
+      })
+    });
+    assert.equal(unauthenticatedAdminWrite.status, 401);
+    assert.equal((await unauthenticatedAdminWrite.json()).code, "admin_session_required");
 
     result = await requestJson(apiBase, "/api/providers/add-key", {
       method: "POST",
@@ -376,8 +418,8 @@ test("HTTP API returns specific status codes for invalid inputs", async () => {
         balanceConfig: { enabled: false }
       }
     });
-    assert.equal(result.status, 423);
-    assert.equal(result.data.code, "vault_locked");
+    assert.equal(result.status, 401);
+    assert.equal(result.data.code, "admin_session_required");
   } finally {
     proxy.stop();
     await close(api);
@@ -761,6 +803,12 @@ test("URL test uses an independent timeout for each probe attempt", async () => 
   const apiBase = `http://127.0.0.1:${apiPort}`;
 
   try {
+    let setup = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(setup.status, 200);
+
     const result = await requestJson(apiBase, "/api/test-url", {
       method: "POST",
       body: {

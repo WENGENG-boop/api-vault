@@ -2,7 +2,7 @@ import type { AppState } from "../../shared/types";
 import type { ReactNode } from "react";
 import type { AppTab } from "./types";
 
-const tabs: AppTab[] = ["dashboard", "providers", "models", "account-pools", "proxy-tokens", "local-services", "usage", "billing"];
+const tabs: AppTab[] = ["dashboard", "providers", "status", "models", "account-pools", "proxy-tokens", "local-services", "usage", "billing"];
 
 interface AppShellProps {
   state: AppState;
@@ -52,5 +52,6 @@ function tabLabel(tab: AppTab): string {
   if (tab === "local-services") return "Local Services";
   if (tab === "account-pools") return "Account Pools";
   if (tab === "models") return "Models";
+  if (tab === "status") return "Status";
   return tab.charAt(0).toUpperCase() + tab.slice(1);
 }

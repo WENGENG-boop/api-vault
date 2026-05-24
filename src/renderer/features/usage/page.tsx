@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppState, UsageEvent } from "../../../shared/types";
 import { USAGE_PAGE_SIZE } from "../../shared/config";
+import { Button, EmptyState, PageHeader, StatusPill } from "../../shared/components";
 import { compactNumber, formatMoney, formatUsageDateTime, gatewayLabel } from "../../shared/utils";
 
 export function Usage({ state }: { state: AppState }) {
@@ -8,6 +9,7 @@ export function Usage({ state }: { state: AppState }) {
   const [providerId, setProviderId] = useState("all");
   const [apiKeyId, setApiKeyId] = useState("all");
   const [page, setPage] = useState(1);
+  const [selectedEventId, setSelectedEventId] = useState<string | undefined>();
   const keyOptions = useMemo(() => {
     const providers = providerId === "all"
       ? state.providers
@@ -44,15 +46,22 @@ export function Usage({ state }: { state: AppState }) {
   }, [currentPage, filtered]);
   const pageStart = filtered.length === 0 ? 0 : (currentPage - 1) * USAGE_PAGE_SIZE + 1;
   const pageEnd = Math.min(currentPage * USAGE_PAGE_SIZE, filtered.length);
+  const failedCount = useMemo(() => filtered.filter((event) => !event.ok).length, [filtered]);
+  const selectedEvent = useMemo(() => state.usageEvents.find((event) => event.id === selectedEventId), [selectedEventId, state.usageEvents]);
 
   useEffect(() => { setPage(1); }, [apiKeyId, filter, providerId]);
   useEffect(() => { setPage((value) => Math.min(value, pageCount)); }, [pageCount]);
+  useEffect(() => {
+    if (selectedEventId && !filtered.some((event) => event.id === selectedEventId)) setSelectedEventId(undefined);
+  }, [filtered, selectedEventId]);
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>Usage Log</h2>
-        <div className="usage-filters">
+      <PageHeader
+        title="Usage Log"
+        description="Filter recent gateway calls, then open a row to inspect routing, token, cost, latency, and error details."
+        actions={
+          <div className="usage-filters">
           <select value={providerId} onChange={(e) => { setProviderId(e.target.value); setApiKeyId("all"); }}>
             <option value="all">All providers</option>
             {state.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
@@ -63,29 +72,32 @@ export function Usage({ state }: { state: AppState }) {
           </select>
           <input className="filter-input" placeholder="Filter model, gateway, base URL, status, error..." value={filter} onChange={(e) => setFilter(e.target.value)} />
         </div>
-      </div>
+        }
+      />
+      {failedCount > 0 && <div className="usage-alert"><StatusPill tone="fail">{failedCount} failed</StatusPill><span>Open failed rows to inspect upstream status and error text.</span></div>}
       {totalCost > 0 && <div className="cost-summary">Total cost (filtered): {formatMoney(totalCost)}</div>}
       {filtered.length > 0 && (
         <div className="usage-pagination">
           <span>showing {pageStart}-{pageEnd} of {filtered.length} logs</span>
           <div>
-            <button disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Prev</button>
+            <button type="button" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Prev</button>
             {Array.from({ length: pageCount }, (_, index) => index + 1).map((item) => (
-              <button key={item} className={item === currentPage ? "active" : ""} onClick={() => setPage(item)}>{item}</button>
+              <button type="button" key={item} className={item === currentPage ? "active" : ""} onClick={() => setPage(item)}>{item}</button>
             ))}
-            <button disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Next</button>
+            <button type="button" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Next</button>
           </div>
         </div>
       )}
-      <UsageTable events={paged} />
-      {filtered.length === 0 && <p className="empty">No usage events yet. {state.providers.length} providers are configured; make API calls through a copied proxy URL to see records here.</p>}
+      <UsageTable events={paged} selectedEventId={selectedEventId} onSelect={setSelectedEventId} />
+      {selectedEvent && <UsageEventDetails event={selectedEvent} onClose={() => setSelectedEventId(undefined)} />}
+      {filtered.length === 0 && <EmptyState title="No usage events yet" description={`${state.providers.length} providers are configured; make API calls through a copied proxy URL to see records here.`} />}
     </div>
   );
 }
 
 
 
-function UsageTable({ events }: { events: UsageEvent[] }) {
+function UsageTable({ events, selectedEventId, onSelect }: { events: UsageEvent[]; selectedEventId?: string; onSelect: (id: string) => void }) {
   return (
     <div className="table-wrap">
       <table className="usage-table">
@@ -107,14 +119,19 @@ function UsageTable({ events }: { events: UsageEvent[] }) {
         </thead>
         <tbody>
           {events.map((e) => (
-            <tr key={e.id} className={e.ok ? "" : "row-error"}>
+            <tr key={e.id} className={`${e.ok ? "" : "row-error"} ${selectedEventId === e.id ? "row-selected" : ""}`} onClick={() => onSelect(e.id)} tabIndex={0} onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(e.id);
+              }
+            }}>
               <td>{formatUsageDateTime(e.startedAt)}</td>
               <td>{e.providerName}</td>
               <td><code>{e.baseUrl ?? "-"}</code></td>
               <td><span className="gateway-pill" title={e.gatewayBaseUrl ?? ""}>{gatewayLabel(e)}</span></td>
               <td>{e.apiKeyName ?? e.apiKeyMasked ?? "-"}</td>
               <td>{e.model ?? "-"}</td>
-              <td><span className={`status ${e.ok ? "ok" : "fail"}`}>{e.ok ? "success" : "failed"} {e.status}</span></td>
+              <td><StatusPill tone={e.ok ? "ok" : "fail"}>{e.ok ? "success" : "failed"} {e.status}</StatusPill></td>
               <td>{e.inputTokens !== undefined ? compactNumber(e.inputTokens) : "-"}</td>
               <td>{e.outputTokens !== undefined ? compactNumber(e.outputTokens) : "-"}</td>
               <td>{e.realCost !== undefined ? formatMoney(e.realCost, e.currency) : "Not returned"}</td>
@@ -124,6 +141,51 @@ function UsageTable({ events }: { events: UsageEvent[] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function UsageEventDetails({ event, onClose }: { event: UsageEvent; onClose: () => void }) {
+  const totalTokens = event.totalTokens ?? ((event.inputTokens ?? 0) + (event.outputTokens ?? 0) + (event.cachedInputTokens ?? 0));
+  return (
+    <aside className={`usage-detail-panel ${event.ok ? "" : "usage-detail-panel--fail"}`} aria-label="Usage event details">
+      <div className="usage-detail-head">
+        <div>
+          <StatusPill tone={event.ok ? "ok" : "fail"}>{event.ok ? "success" : "failed"} {event.status}</StatusPill>
+          <h3>{event.model ?? "Unknown model"}</h3>
+          <p>{formatUsageDateTime(event.startedAt)}</p>
+        </div>
+        <Button onClick={onClose}>Close</Button>
+      </div>
+      <div className="usage-detail-grid">
+        <DetailItem label="Provider" value={event.providerName} />
+        <DetailItem label="Base URL" value={event.baseUrl ?? "-"} code />
+        <DetailItem label="Gateway" value={gatewayLabel(event)} />
+        <DetailItem label="Gateway URL" value={event.gatewayBaseUrl ?? "-"} code />
+        <DetailItem label="Model" value={event.model ?? "-"} code />
+        <DetailItem label="Key" value={event.apiKeyName ?? event.apiKeyMasked ?? "-"} />
+        <DetailItem label="Proxy Token" value={event.proxyTokenName ?? "-"} />
+        <DetailItem label="Status" value={`${event.ok ? "success" : "failed"} ${event.status}`} />
+        <DetailItem label="Tokens" value={`${compactNumber(totalTokens)} total, ${event.inputTokens !== undefined ? compactNumber(event.inputTokens) : "-"} input, ${event.outputTokens !== undefined ? compactNumber(event.outputTokens) : "-"} output`} />
+        <DetailItem label="Cost" value={event.realCost !== undefined ? formatMoney(event.realCost, event.currency) : "Not returned"} />
+        <DetailItem label="Latency" value={`${event.latencyMs}ms`} />
+        <DetailItem label="Endpoint" value={`${event.method} ${event.path}`} code />
+      </div>
+      {!event.ok && (
+        <div className="usage-detail-error">
+          <strong>Error</strong>
+          <pre>{event.error ?? event.errorMessage ?? "No error text recorded"}</pre>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function DetailItem({ label, value, code = false }: { label: string; value: string; code?: boolean }) {
+  return (
+    <div className="usage-detail-item">
+      <span>{label}</span>
+      {code ? <code>{value}</code> : <strong>{value}</strong>}
     </div>
   );
 }

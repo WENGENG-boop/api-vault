@@ -7,6 +7,7 @@ import { LocalServicesPage } from "../features/local-services";
 import { ModelDirectory } from "../features/models";
 import { Providers } from "../features/providers";
 import { ProxyTokens } from "../features/proxy-tokens";
+import { StatusPage } from "../features/status";
 import { Usage } from "../features/usage";
 import { AuthScreen } from "./AuthScreen";
 import { AppShell } from "./AppShell";
@@ -72,8 +73,9 @@ export default function App() {
 
   return (
     <AppShell state={safeState} tab={tab} message={message} error={error} onTabChange={setTab} onLock={lock}>
-      {tab === "dashboard" && <Dashboard state={safeState} />}
+      {tab === "dashboard" && <Dashboard state={safeState} onNavigate={setTab} />}
       {tab === "providers" && <Providers state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
+      {tab === "status" && <StatusPage state={safeState} />}
       {tab === "models" && <ModelDirectory state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
       {tab === "account-pools" && <AccountPools state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
       {tab === "proxy-tokens" && <ProxyTokens state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}

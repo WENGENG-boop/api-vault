@@ -302,6 +302,7 @@ export interface ProviderModelSyncResult {
 export interface AppState {
   initialized: boolean;
   unlocked: boolean;
+  adminToken?: string;
   proxyPort?: number;
   providers: ProviderSafe[];
   proxyTokens: ProxyTokenSafe[];

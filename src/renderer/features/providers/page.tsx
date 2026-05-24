@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AddKeyInput, ApiProtocol, AppState, BalanceConfig, ProviderSafe } from "../../../shared/types";
 import { apiClient, copyTextToClipboard } from "../../shared/api";
 import { defaultBalanceConfig } from "../../shared/config";
@@ -43,10 +43,6 @@ export function Providers({ state, setState, showMsg, showErr }: {
   const anthropicGlobalUrl = globalProxyBaseUrl(state.proxyPort, "anthropic");
   const autoGlobalUrl = globalProxyBaseUrl(state.proxyPort, "auto");
   const allUsageRows = useMemo(() => buildAnalyticsRows(state.usageEvents, state.usageRollups ?? [], "all"), [state.usageEvents, state.usageRollups]);
-  const providerTestKey = useMemo(
-    () => JSON.stringify(state.providers.map((p) => ({ id: p.id, baseUrl: p.baseUrl, protocol: p.protocol }))),
-    [state.providers]
-  );
 
   async function runProviderUrlTest(p: ProviderSafe) {
     setUrlTests((prev) => ({ ...prev, [p.id]: { ...(prev[p.id] ?? { ok: false, latencyMs: 0, checkedAt: "" }), testing: true } }));
@@ -57,14 +53,6 @@ export function Providers({ state, setState, showMsg, showErr }: {
       setUrlTests((prev) => ({ ...prev, [p.id]: { ok: false, latencyMs: 0, error: e instanceof Error ? e.message : String(e), checkedAt: new Date().toISOString(), testing: false } }));
     }
   }
-
-  useEffect(() => {
-    if (state.providers.length === 0) return;
-    const run = () => { state.providers.forEach((p) => { runProviderUrlTest(p); }); };
-    run();
-    const timer = window.setInterval(run, 60_000);
-    return () => window.clearInterval(timer);
-  }, [providerTestKey]);
 
   async function testFormUrl() {
     if (!form.baseUrl?.trim()) return;
@@ -297,6 +285,7 @@ export function Providers({ state, setState, showMsg, showErr }: {
         {state.providers.map((p) => {
           const providerRows = allUsageRows.filter((row) => row.providerId === p.id);
           const providerStats = aggregateRows(providerRows);
+          const providerTest = urlTests[p.id] ?? storedProviderTest(p);
           return (
             <div
               key={p.id}
@@ -326,10 +315,10 @@ export function Providers({ state, setState, showMsg, showErr }: {
                 </button>
               </div>
               <div className="provider-url provider-summary-base">
-                <UrlTestIndicator test={urlTests[p.id]} />
+                <UrlTestIndicator test={providerTest} />
                 <span>{p.baseUrl}</span>
               </div>
-              <UrlTestStatusLine test={urlTests[p.id]} />
+              <UrlTestStatusLine test={providerTest} />
               <div className="provider-stats provider-summary-stats">
                 <span>{providerStats.calls} calls</span>
                 <span>{compactNumber(providerStats.totalTokens)} tokens</span>
@@ -353,6 +342,7 @@ export function Providers({ state, setState, showMsg, showErr }: {
       {selectedProvider && (() => {
         const providerRows = allUsageRows.filter((row) => row.providerId === selectedProvider.id);
         const providerStats = aggregateRows(providerRows);
+        const selectedProviderTest = urlTests[selectedProvider.id] ?? storedProviderTest(selectedProvider);
         return (
           <div className="provider-modal-backdrop" onClick={() => setSelectedProviderId(undefined)}>
             <div className="provider-modal" role="dialog" aria-modal="true" aria-label={`${selectedProvider.name} provider details`} onClick={(event) => event.stopPropagation()}>
@@ -364,11 +354,11 @@ export function Providers({ state, setState, showMsg, showErr }: {
                     <span className="provider-protocol">{selectedProvider.apiKeys.length} keys</span>
                   </div>
                   <div className="provider-url">
-                    <UrlTestIndicator test={urlTests[selectedProvider.id]} />
+                    <UrlTestIndicator test={selectedProviderTest} />
                     <span>{selectedProvider.baseUrl}</span>
                     <button type="button" className="url-test-retry" onClick={() => runProviderUrlTest(selectedProvider)} disabled={urlTests[selectedProvider.id]?.testing}>Test now</button>
                   </div>
-                  <UrlTestStatusLine test={urlTests[selectedProvider.id]} />
+                  <UrlTestStatusLine test={selectedProviderTest} />
                 </div>
                 <button className="provider-modal-close" onClick={() => setSelectedProviderId(undefined)}>Close</button>
               </div>
@@ -482,3 +472,12 @@ export function Providers({ state, setState, showMsg, showErr }: {
   );
 }
 
+function storedProviderTest(provider: ProviderSafe): UrlTestStatus | undefined {
+  if (provider.status === "unknown") return undefined;
+  return {
+    ok: provider.status === "available",
+    latencyMs: provider.latencyMs ?? 0,
+    checkedAt: provider.lastCheckedAt ?? provider.updatedAt,
+    error: provider.status === "unavailable" ? "Last saved provider test failed" : undefined
+  };
+}

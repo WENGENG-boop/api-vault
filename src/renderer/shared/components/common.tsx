@@ -1,10 +1,56 @@
 import type { UrlTestResult } from "../api";
 import { buildModelTokenRanking, compactNumber, shortLabel } from "../utils";
+import type { ReactNode } from "react";
 
 export type UrlTestStatus = UrlTestResult & { testing?: boolean };
 
 export function EmptyChart({ label = "No chart data yet" }: { label?: string }) {
   return <div className="empty-chart">{label}</div>;
+}
+
+export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="page-header page-header-stacked">
+      <div className="page-header-copy">
+        <h2>{title}</h2>
+        {description && <p>{description}</p>}
+      </div>
+      {actions && <div className="page-header-actions">{actions}</div>}
+    </div>
+  );
+}
+
+export function Button({ variant = "secondary", className = "", type = "button", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "danger" }) {
+  const variantClass = variant === "primary" ? "btn-primary" : variant === "danger" ? "btn-danger" : "btn-secondary";
+  return <button {...props} type={type} className={`${variantClass} ${className}`.trim()} />;
+}
+
+export function StatusPill({ tone = "neutral", children, title }: { tone?: "ok" | "fail" | "warn" | "neutral"; children: ReactNode; title?: string }) {
+  return <span className={`status-pill status-pill--${tone}`} title={title}>{children}</span>;
+}
+
+export function EmptyState({ title, description, action }: { title: string; description?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="empty-state">
+      <strong>{title}</strong>
+      {description && <p>{description}</p>}
+      {action && <div className="empty-state-action">{action}</div>}
+    </div>
+  );
+}
+
+export function CopyField({ value, label, onCopy }: { value: string; label?: string; onCopy?: () => void }) {
+  return (
+    <div className="copy-field">
+      {label && <span>{label}</span>}
+      <code>{value}</code>
+      {onCopy && <button type="button" onClick={onCopy}>Copy</button>}
+    </div>
+  );
+}
+
+export function confirmAction(message: string): boolean {
+  return window.confirm(message);
 }
 
 export function ModelTokenLeaderboard({ data, limit, onItemClick }: {

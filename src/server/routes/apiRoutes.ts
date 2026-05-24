@@ -1,5 +1,5 @@
 ﻿import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AccountPoolInput, AddKeyInput, ApiKeyInput, CloudflaredApiResponse, CloudflaredConfig, LocalService, LocalServiceProtocol, ProviderInput, ProviderModelInput, ProxyTokenInput } from "../../shared/types";
+import type { AccountPoolInput, AddKeyInput, ApiKeyInput, AppState, CloudflaredApiResponse, CloudflaredConfig, LocalService, LocalServiceProtocol, ProviderInput, ProviderModelInput, ProxyTokenInput } from "../../shared/types";
 import { syncBalance } from "../../main/balance";
 import { CloudflaredManager } from "../../main/cloudflared";
 import { testCpaConnection } from "../../main/cpaConnector";
@@ -7,6 +7,7 @@ import { notFound, serviceUnavailable } from "../../main/errors";
 import type { VaultStore } from "../../main/store";
 import { DEFAULT_PORT } from "../config/serverConfig";
 import { enforceAuthLimiter, recordAuthFailure } from "../middlewares/authLimiter";
+import { AdminSessionManager, extractAdminToken, requireAdminSession } from "../middlewares/adminSession";
 import { readJsonBody } from "../utils/requestBody";
 import { sendJson } from "../utils/responses";
 import { writeAccountPoolAuthFile } from "../services/accountPoolAuthService";
@@ -16,19 +17,24 @@ import { testUpstreamUrl } from "../services/upstreamProbeService";
 export interface ApiRouteContext {
   store: VaultStore;
   cloudflared?: CloudflaredManager;
+  adminSessions?: AdminSessionManager;
 }
 export async function handleApi(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
-  { store, cloudflared }: ApiRouteContext
+  { store, cloudflared, adminSessions }: ApiRouteContext
 ) {
   const method = req.method?.toUpperCase() ?? "GET";
   const proxyPort = Number(url.port || DEFAULT_PORT);
   const getState = () => store.getState(proxyPort, cloudflared?.getStatus());
 
   if (method === "GET" && url.pathname === "/api/state") {
-    sendJson(res, 200, getState());
+    if (adminSessions?.validate(extractAdminToken(req))) {
+      sendJson(res, 200, getState());
+      return;
+    }
+    sendJson(res, 200, getPublicState(store, proxyPort));
     return;
   }
 
@@ -37,7 +43,7 @@ export async function handleApi(
     try {
       const body = await readJsonBody<{ password: string }>(req);
       store.setup(body.password);
-      sendJson(res, 200, getState());
+      sendJson(res, 200, withAdminToken(getState(), adminSessions));
     } catch (error) {
       recordAuthFailure(req);
       throw error;
@@ -50,7 +56,7 @@ export async function handleApi(
     try {
       const body = await readJsonBody<{ password: string }>(req);
       store.unlock(body.password);
-      sendJson(res, 200, getState());
+      sendJson(res, 200, withAdminToken(getState(), adminSessions));
     } catch (error) {
       recordAuthFailure(req);
       throw error;
@@ -58,8 +64,11 @@ export async function handleApi(
     return;
   }
 
+  const adminToken = requireAdminSession(req, adminSessions);
+
   if (method === "POST" && url.pathname === "/api/vault/lock") {
     store.lock();
+    adminSessions?.revoke(adminToken);
     sendJson(res, 200, getState());
     return;
   }
@@ -403,4 +412,36 @@ export async function handleApi(
   }
 
   throw notFound("API route not found", "api_route_not_found");
+}
+
+function withAdminToken(state: AppState, sessions?: AdminSessionManager): AppState & { adminToken?: string } {
+  return {
+    ...state,
+    adminToken: sessions?.create()
+  };
+}
+
+function getPublicState(store: VaultStore, proxyPort?: number): AppState {
+  return {
+    initialized: store.status.initialized,
+    unlocked: false,
+    proxyPort,
+    providers: [],
+    proxyTokens: [],
+    accountPools: [],
+    modelCatalog: [],
+    usageEvents: [],
+    usageRollups: [],
+    balanceSnapshots: [],
+    totals: {
+      totalCalls: 0,
+      callsToday: 0,
+      okCalls: 0,
+      failedCalls: 0,
+      realCostTotal: 0,
+      realCostCount: 0
+    },
+    localServices: [],
+    cloudflared: { running: false }
+  };
 }

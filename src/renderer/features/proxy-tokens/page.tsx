@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { AppState, ProxyModelRule, ProxyTokenInput, ProxyTokenSafe } from "../../../shared/types";
 import { apiClient, copyTextToClipboard } from "../../shared/api";
+import { Button, EmptyState, PageHeader, StatusPill, confirmAction } from "../../shared/components";
 
 export function ProxyTokens({ state, setState, showMsg, showErr }: {
   state: AppState; setState: (s: AppState) => void; showMsg: (m: string) => void; showErr: (e: unknown) => void;
@@ -15,6 +16,11 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
   const [jsonSecrets, setJsonSecrets] = useState<Record<string, string>>({});
   const [secret, setSecret] = useState("");
   const [ruleEditIndex, setRuleEditIndex] = useState<number | undefined>();
+  const [poolImportId, setPoolImportId] = useState("");
+  const [providerModelTests, setProviderModelTests] = useState<Record<string, { testing?: boolean; ok?: boolean; error?: string; modelNames: string[]; checkedAt?: string }>>({});
+  const formRef = useRef<HTMLDivElement | null>(null);
+  const ruleEditorRef = useRef<HTMLDivElement | null>(null);
+  const publicModelInputRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState<ProxyTokenInput>({
     name: "remote client",
     enabled: true,
@@ -34,6 +40,62 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
 
   function selectedProvider(id: string) {
     return state.providers.find((provider) => provider.id === id);
+  }
+
+  function upstreamModelOptions(providerId: string): string[] {
+    const catalogModels = state.modelCatalog
+      .filter((model) => model.providerId === providerId)
+      .flatMap((model) => [model.modelId, model.displayName, model.canonicalModelId, ...model.aliases]);
+    const poolModels = state.accountPools
+      .filter((pool) => pool.providerId === providerId)
+      .flatMap((pool) => pool.modelNames);
+    return Array.from(new Set([...catalogModels, ...poolModels].filter((item): item is string => Boolean(item?.trim())))).sort();
+  }
+
+  function providerModelOptions(providerId: string): string[] {
+    const testedModels = providerModelTests[providerId]?.modelNames ?? [];
+    const baseOptions = testedModels.length > 0 ? testedModels : upstreamModelOptions(providerId);
+    return Array.from(new Set([...baseOptions, rule.providerId === providerId ? rule.upstreamModel : ""].filter((item) => item.trim()))).sort();
+  }
+
+  async function testProviderModels(providerId = rule.providerId) {
+    const provider = selectedProvider(providerId);
+    if (!provider) {
+      showErr("Select a provider before testing models");
+      return;
+    }
+    setProviderModelTests((prev) => ({
+      ...prev,
+      [providerId]: { ...(prev[providerId] ?? { modelNames: [] }), testing: true }
+    }));
+    try {
+      const result = await apiClient.testUrl({ baseUrl: provider.baseUrl, protocol: provider.protocol, providerId: provider.id });
+      const modelNames = result.modelNames ?? [];
+      setProviderModelTests((prev) => ({
+        ...prev,
+        [providerId]: { testing: false, ok: result.ok, error: result.error, modelNames, checkedAt: result.checkedAt }
+      }));
+      if (modelNames.length > 0) {
+        setRule((current) => current.providerId === providerId
+          ? { ...current, upstreamModel: modelNames.includes(current.upstreamModel) ? current.upstreamModel : modelNames[0] }
+          : current);
+        showMsg(`Loaded ${modelNames.length} models from ${provider.name}`);
+      } else {
+        showMsg(result.ok ? `Provider test passed, but no model list was returned by ${provider.name}` : `Provider test failed: ${result.error ?? "unknown error"}`);
+      }
+    } catch (e) {
+      setProviderModelTests((prev) => ({
+        ...prev,
+        [providerId]: { testing: false, ok: false, error: e instanceof Error ? e.message : String(e), modelNames: prev[providerId]?.modelNames ?? [], checkedAt: new Date().toISOString() }
+      }));
+      showErr(e);
+    }
+  }
+
+  function providerKeyLabel(providerId: string, apiKeyId?: string) {
+    const provider = selectedProvider(providerId);
+    const key = provider?.apiKeys.find((item) => item.id === apiKeyId);
+    return key ? `${key.name} ${key.keyMasked}` : "First key";
   }
 
   function gatewayBaseUrl() {
@@ -83,11 +145,68 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
     if (!current) return;
     setRule({ ...current });
     setRuleEditIndex(index);
+    window.setTimeout(() => {
+      ruleEditorRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+      publicModelInputRef.current?.focus();
+      publicModelInputRef.current?.select();
+    }, 0);
+  }
+
+  function cancelRuleEdit() {
+    const provider = selectedProvider(rule.providerId) ?? state.providers[0];
+    setRule({
+      publicModel: "",
+      providerId: provider?.id ?? "",
+      apiKeyId: provider?.apiKeys[0]?.id,
+      upstreamModel: ""
+    });
+    setRuleEditIndex(undefined);
   }
 
   function removeRule(index: number) {
+    if (!confirmAction("Remove this model mapping rule?")) return;
     setForm({ ...form, allowedModels: form.allowedModels.filter((_, i) => i !== index) });
     if (ruleEditIndex === index) setRuleEditIndex(undefined);
+  }
+
+  function upsertImportedRules(rules: ProxyModelRule[]) {
+    const byPublicModel = new Map(form.allowedModels.map((item) => [item.publicModel, item]));
+    for (const item of rules) byPublicModel.set(item.publicModel, item);
+    setForm({ ...form, allowedModels: Array.from(byPublicModel.values()) });
+  }
+
+  function importProviderRules() {
+    const providerIds = form.allowedProviderIds.length ? form.allowedProviderIds : state.providers.map((provider) => provider.id);
+    const rules = state.modelCatalog
+      .filter((model) => providerIds.includes(model.providerId))
+      .map((model) => ({
+        publicModel: model.displayName?.trim() || model.canonicalModelId?.trim() || model.modelId,
+        providerId: model.providerId,
+        apiKeyId: selectedProvider(model.providerId)?.apiKeys[0]?.id,
+        upstreamModel: model.modelId
+      }));
+    if (!rules.length) {
+      showErr("No provider models available. Sync the Model Directory first or add a rule manually.");
+      return;
+    }
+    upsertImportedRules(rules);
+    showMsg(`Imported ${rules.length} provider model rules`);
+  }
+
+  function importPoolRules() {
+    const pool = state.accountPools.find((item) => item.id === poolImportId);
+    if (!pool?.providerId || pool.modelNames.length === 0) {
+      showErr("Select an account pool with a linked provider and synced models");
+      return;
+    }
+    const rules = pool.modelNames.map((model) => ({
+      publicModel: model,
+      providerId: pool.providerId!,
+      apiKeyId: selectedProvider(pool.providerId!)?.apiKeys[0]?.id,
+      upstreamModel: model
+    }));
+    upsertImportedRules(rules);
+    showMsg(`Imported ${rules.length} account pool model rules`);
   }
 
   async function create() {
@@ -113,7 +232,7 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
   }
 
   async function remove(id: string) {
-    if (!confirm("Delete this proxy token?")) return;
+    if (!confirmAction("Delete this proxy token?")) return;
     try { const s = await apiClient.deleteProxyToken(id); setState(s); showMsg("Proxy token deleted"); }
     catch (e) { showErr(e); }
   }
@@ -205,6 +324,7 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
     setRuleEditIndex(undefined);
     setEditingTokenId(undefined);
     setShowForm(true);
+    window.setTimeout(() => formRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
   }
 
   function beginEdit(tokenId: string) {
@@ -230,6 +350,7 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
     setRuleEditIndex(undefined);
     setEditingTokenId(tokenId);
     setShowForm(true);
+    window.setTimeout(() => formRef.current?.scrollIntoView({ block: "start", behavior: "smooth" }), 0);
   }
 
   const jsonModalToken = state.proxyTokens.find((token) => token.id === jsonModalTokenId);
@@ -239,18 +360,21 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
 
   return (
     <div className="page">
-      <div className="page-header proxy-token-page-header">
-        <h2>Proxy Tokens</h2>
-        <div className="provider-actions">
-          <span className="proxy-token-count">{state.proxyTokens.length} active token{state.proxyTokens.length === 1 ? "" : "s"}</span>
-          <button onClick={refresh}>Refresh</button>
-          <button className="btn-primary" onClick={beginCreate}>+ Add Token</button>
-        </div>
-      </div>
+      <PageHeader
+        title="Proxy Tokens"
+        description={<>Use <code>Authorization: Bearer proxy_xxx</code> against <code>/proxy/v1/chat/completions</code>. Real provider keys never leave API Vault.</>}
+        actions={
+          <>
+            <span className="proxy-token-count">{state.proxyTokens.length} token{state.proxyTokens.length === 1 ? "" : "s"}</span>
+            <Button onClick={refresh}>Refresh</Button>
+            <Button variant="primary" onClick={beginCreate}>Add Token</Button>
+          </>
+        }
+      />
       <div className="usage-hint proxy-token-hint">
-        Use <code>Authorization: Bearer proxy_xxx</code> against <code>/proxy/v1/chat/completions</code>. Real provider keys never leave API Vault.
+        Model mappings define the public model names clients see and the upstream provider model each name reaches.
       </div>
-      {showForm && <div className="form-card proxy-token-form">
+      {showForm && <div className="form-card proxy-token-form" ref={formRef}>
         <div className="proxy-token-section-head">
           <h3>{editingTokenId ? "Edit Proxy Token" : "Add Proxy Token"}</h3>
           <span>{editingTokenId ? "Update model mapping and limits" : "Add token access for external clients"}</span>
@@ -274,40 +398,78 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
             </label>
           ))}
         </div>
-        <div className="proxy-rule-builder">
+        <div className="proxy-rule-builder" ref={ruleEditorRef}>
           <div className="proxy-token-section-head">
-            <h4>Model Mapping</h4>
-            <span>Public name -&gt; provider / upstream model</span>
+            <h4>{ruleEditIndex === undefined ? "Model Mapping" : `Editing mapping #${ruleEditIndex + 1}`}</h4>
+            <span>{ruleEditIndex === undefined ? "Public model -> provider / upstream model / key" : "Change the fields below, then save or cancel this rule edit."}</span>
+          </div>
+          <div className="proxy-rule-imports">
+            <Button onClick={importProviderRules} disabled={state.modelCatalog.length === 0}>Import provider models</Button>
+            <select value={poolImportId} onChange={(event) => setPoolImportId(event.target.value)}>
+              <option value="">Select account pool</option>
+              {state.accountPools.map((pool) => <option key={pool.id} value={pool.id}>{pool.name} ({pool.modelNames.length})</option>)}
+            </select>
+            <Button onClick={importPoolRules} disabled={!poolImportId}>Import pool models</Button>
           </div>
           <div className="form-grid">
-            <label>Public model<input value={rule.publicModel} onChange={(e) => setRule({ ...rule, publicModel: e.target.value })} placeholder="claude-desktop" /></label>
+            <label>Public model<input ref={publicModelInputRef} value={rule.publicModel} onChange={(e) => setRule({ ...rule, publicModel: e.target.value })} placeholder="claude-desktop" /></label>
             <label>Provider<select value={rule.providerId} onChange={(e) => {
               const provider = selectedProvider(e.target.value);
-              setRule({ ...rule, providerId: e.target.value, apiKeyId: provider?.apiKeys[0]?.id });
+              const options = providerModelTests[e.target.value]?.modelNames.length
+                ? providerModelTests[e.target.value].modelNames
+                : upstreamModelOptions(e.target.value);
+              setRule({ ...rule, providerId: e.target.value, apiKeyId: provider?.apiKeys[0]?.id, upstreamModel: options[0] ?? rule.upstreamModel });
             }}>{state.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}</select></label>
             <label>Key<select value={rule.apiKeyId ?? ""} onChange={(e) => setRule({ ...rule, apiKeyId: e.target.value || undefined })}>
               <option value="">First key</option>
               {(selectedProvider(rule.providerId)?.apiKeys ?? []).map((key) => <option key={key.id} value={key.id}>{key.name} {key.keyMasked}</option>)}
             </select></label>
-            <label>Upstream model<input value={rule.upstreamModel} onChange={(e) => setRule({ ...rule, upstreamModel: e.target.value })} placeholder="real-model-id" /></label>
+            <label>Upstream model
+              <select value={rule.upstreamModel} onChange={(e) => setRule({ ...rule, upstreamModel: e.target.value })} disabled={!rule.providerId || providerModelOptions(rule.providerId).length === 0}>
+                <option value="">{rule.providerId ? "Select upstream model" : "Select provider first"}</option>
+                {providerModelOptions(rule.providerId).map((model) => <option key={model} value={model}>{model}</option>)}
+              </select>
+            </label>
           </div>
-          <button className="proxy-token-add-rule" onClick={addRule}>{ruleEditIndex === undefined ? "Add model rule" : "Save model rule"}</button>
+          <div className="proxy-model-test-row">
+            <Button onClick={() => testProviderModels()} disabled={!rule.providerId || providerModelTests[rule.providerId]?.testing}>
+              {providerModelTests[rule.providerId]?.testing ? "Testing models..." : "Test provider models"}
+            </Button>
+            <span>
+              {providerModelTests[rule.providerId]?.modelNames.length
+                ? `${providerModelTests[rule.providerId].modelNames.length} models from latest provider test`
+                : upstreamModelOptions(rule.providerId).length
+                ? `${upstreamModelOptions(rule.providerId).length} fallback models from Model Directory / account pools`
+                : "No model options yet. Test the selected provider or sync the Model Directory."}
+            </span>
+            {providerModelTests[rule.providerId]?.error && <em>{providerModelTests[rule.providerId].error}</em>}
+          </div>
+          <div className="proxy-rule-editor-actions">
+            <Button className="proxy-token-add-rule" onClick={addRule} disabled={!rule.publicModel.trim() || !rule.providerId || !rule.upstreamModel.trim()}>
+              {ruleEditIndex === undefined ? "Add model rule" : "Save model rule"}
+            </Button>
+            {ruleEditIndex !== undefined && <Button onClick={cancelRuleEdit}>Cancel rule edit</Button>}
+          </div>
           <div className="proxy-rule-list">
             {form.allowedModels.map((item, index) => (
-              <span key={`${item.publicModel}-${index}`} className="proxy-rule-item">
-                <code>{item.publicModel}</code> {"->"} {selectedProvider(item.providerId)?.name ?? item.providerId} / <code>{item.upstreamModel}</code>
-                <button onClick={() => editRule(index)}>Edit</button>
-                <button onClick={() => removeRule(index)}>Remove</button>
-              </span>
+              <div key={`${item.publicModel}-${index}`} className={`proxy-rule-row ${ruleEditIndex === index ? "proxy-rule-row-editing" : ""}`}>
+                <code>{item.publicModel}</code>
+                <span>{selectedProvider(item.providerId)?.name ?? item.providerId}</span>
+                <code>{item.upstreamModel}</code>
+                <span>{providerKeyLabel(item.providerId, item.apiKeyId)}</span>
+                <StatusPill tone={selectedProvider(item.providerId) ? "ok" : "fail"}>{selectedProvider(item.providerId) ? "ready" : "missing provider"}</StatusPill>
+                <button type="button" onClick={() => editRule(index)}>{ruleEditIndex === index ? "Editing" : "Edit"}</button>
+                <button type="button" className="danger-link" onClick={() => removeRule(index)}>Remove</button>
+              </div>
             ))}
-            {form.allowedModels.length === 0 && <p className="empty">No model mapping rules yet.</p>}
+            {form.allowedModels.length === 0 && <EmptyState title="No model mapping rules yet" description="Add one manually or import from the Model Directory/account pool." />}
           </div>
         </div>
         <div className="form-actions">
-          <button className="btn-primary" onClick={editingTokenId ? saveEdit : create} disabled={state.providers.length === 0}>
+          <button type="button" className="btn-primary" onClick={editingTokenId ? saveEdit : create} disabled={state.providers.length === 0}>
             {editingTokenId ? "Save" : "Add Token"}
           </button>
-          <button onClick={() => { setShowForm(false); setEditingTokenId(undefined); }}>Cancel</button>
+          <button type="button" onClick={() => { setShowForm(false); setEditingTokenId(undefined); }}>Cancel</button>
         </div>
         {secret && <div className="secret-once"><strong>Copy this now. It is shown once:</strong><code>{secret}</code></div>}
       </div>}
@@ -328,23 +490,27 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
             {expandedTokenId === token.id && (
               <div className="proxy-rule-list">
                 {token.allowedModels.map((item, index) => (
-                  <span key={`${token.id}-${item.publicModel}-${index}`} className="proxy-rule-item">
-                    <code>{item.publicModel}</code> {"->"} {selectedProvider(item.providerId)?.name ?? item.providerId} / <code>{item.upstreamModel}</code>
-                  </span>
+                  <div key={`${token.id}-${item.publicModel}-${index}`} className="proxy-rule-row proxy-rule-row-readonly">
+                    <code>{item.publicModel}</code>
+                    <span>{selectedProvider(item.providerId)?.name ?? item.providerId}</span>
+                    <code>{item.upstreamModel}</code>
+                    <span>{providerKeyLabel(item.providerId, item.apiKeyId)}</span>
+                    <StatusPill tone={token.enabled && selectedProvider(item.providerId) ? "ok" : "neutral"}>{token.enabled ? "enabled" : "disabled"}</StatusPill>
+                  </div>
                 ))}
                 {token.allowedModels.length === 0 && <p className="empty">No model mapping rules.</p>}
               </div>
             )}
             <div className="provider-actions proxy-token-actions">
-              <button onClick={() => setExpandedTokenId(expandedTokenId === token.id ? undefined : token.id)}>
+              <button type="button" onClick={() => setExpandedTokenId(expandedTokenId === token.id ? undefined : token.id)}>
                 {expandedTokenId === token.id ? "Hide" : "Show"}
               </button>
-              <button onClick={() => beginEdit(token.id)}>Edit Mapping</button>
-              <button onClick={() => reveal(token.id)}>{revealedSecrets[token.id] ? "Hide Key" : "Show Key"}</button>
-              <button onClick={() => openJsonConfig(token)}>JSON File</button>
-              <button onClick={() => toggle(token.id, !token.enabled)}>{token.enabled ? "Disable" : "Enable"}</button>
-              <button onClick={() => regenerate(token.id)}>Regenerate</button>
-              <button className="btn-danger" onClick={() => remove(token.id)}>Delete</button>
+              <button type="button" onClick={() => beginEdit(token.id)}>Edit Mapping</button>
+              <button type="button" onClick={() => reveal(token.id)}>{revealedSecrets[token.id] ? "Hide Key" : "Show Key"}</button>
+              <button type="button" onClick={() => openJsonConfig(token)}>JSON File</button>
+              <button type="button" onClick={() => toggle(token.id, !token.enabled)}>{token.enabled ? "Disable" : "Enable"}</button>
+              <button type="button" onClick={() => regenerate(token.id)}>Regenerate</button>
+              <button type="button" className="btn-danger" onClick={() => remove(token.id)}>Delete</button>
             </div>
             {revealedSecrets[token.id] && (
               <div className="secret-once">
@@ -353,19 +519,19 @@ export function ProxyTokens({ state, setState, showMsg, showErr }: {
             )}
           </div>
         ))}
-        {state.proxyTokens.length === 0 && <p className="empty">No proxy tokens yet. Create one before using a public tunnel.</p>}
+        {state.proxyTokens.length === 0 && <EmptyState title="No proxy tokens yet" description="Create one before using the public proxy or tunnel." action={<Button variant="primary" onClick={beginCreate}>Add Token</Button>} />}
       </div>
       {jsonModalToken && (
         <div className="proxy-json-modal-backdrop" onClick={() => setJsonModalTokenId(undefined)}>
           <div className="proxy-json-modal" role="dialog" aria-modal="true" aria-label={`${jsonModalToken.name} JSON config`} onClick={(event) => event.stopPropagation()}>
             <div className="proxy-json-modal-header">
               <div>
-                <strong>{jsonModalToken.name} JSON File</strong>
-                <span>{inferenceModelsFor(jsonModalToken).length} inference model{inferenceModelsFor(jsonModalToken).length === 1 ? "" : "s"}</span>
+                <strong>{jsonModalToken.name} JSON config</strong>
+                <span>Paste this into clients that support gateway inference settings. It includes the proxy base URL, proxy token, and mapped public models.</span>
               </div>
               <div className="proxy-json-modal-actions">
-                <button className="btn-primary" onClick={() => copyJsonConfig(jsonModalToken)} disabled={!jsonModalText}>{jsonCopied ? "Copied" : "Copy"}</button>
-                <button onClick={() => setJsonModalTokenId(undefined)}>Close</button>
+                <button type="button" className="btn-primary" onClick={() => copyJsonConfig(jsonModalToken)} disabled={!jsonModalText}>{jsonCopied ? "Copied" : "Copy"}</button>
+                <button type="button" onClick={() => setJsonModalTokenId(undefined)}>Close</button>
               </div>
             </div>
             <pre className="proxy-json-code">{jsonModalText}</pre>

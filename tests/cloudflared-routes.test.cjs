@@ -30,22 +30,30 @@ test("cloudflared routes return structured response", async () => {
   const base = `http://127.0.0.1:${port}`;
 
   try {
-    let res = await fetch(`${base}/api/cloudflared/status`);
+    let res = await fetch(`${base}/api/vault/unlock`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: "pass-123456" })
+    });
     let data = await res.json();
+    const adminHeaders = { "x-api-vault-admin": data.adminToken };
+
+    res = await fetch(`${base}/api/cloudflared/status`, { headers: adminHeaders });
+    data = await res.json();
     assert.equal(data.ok, true);
     assert.equal(data.status.phase, "idle");
 
-    res = await fetch(`${base}/api/cloudflared/start`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) });
+    res = await fetch(`${base}/api/cloudflared/start`, { method: "POST", headers: { ...adminHeaders, "content-type": "application/json" }, body: JSON.stringify({}) });
     data = await res.json();
     assert.equal(data.ok, true);
     assert.equal(data.status.running, true);
 
-    res = await fetch(`${base}/api/cloudflared/logs?limit=10`);
+    res = await fetch(`${base}/api/cloudflared/logs?limit=10`, { headers: adminHeaders });
     data = await res.json();
     assert.equal(data.ok, true);
     assert.equal(Array.isArray(data.logs), true);
 
-    res = await fetch(`${base}/api/cloudflared/stop`, { method: "POST" });
+    res = await fetch(`${base}/api/cloudflared/stop`, { method: "POST", headers: adminHeaders });
     data = await res.json();
     assert.equal(data.ok, true);
     assert.equal(data.status.running, false);

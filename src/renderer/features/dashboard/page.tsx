@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import type { AppState, CloudflaredStatus, LocalService, ProviderSafe, UsageEvent, UsageRollup } from "../../../shared/types";
+import type { AppTab } from "../../app/types";
 import { apiClient } from "../../shared/api";
-import { EmptyChart } from "../../shared/components";
+import { Button, EmptyChart, PageHeader, StatusPill } from "../../shared/components";
 import { buildAnalyticsRows, buildModelTokenRanking, compactNumber, shortLabel, type AnalyticsRow } from "../../shared/utils";
 
 type DashboardRange = "all" | "30d" | "7d" | "today";
@@ -49,7 +50,7 @@ interface ModelTokenShare {
 
 
 
-export function Dashboard({ state }: { state: AppState }) {
+export function Dashboard({ state, onNavigate }: { state: AppState; onNavigate: (tab: AppTab) => void }) {
   const [dashboardView, setDashboardView] = useState<DashboardView>("overview");
   const [dashboardRange, setDashboardRange] = useState<DashboardRange>("all");
   const rows = useMemo(() => dashboardRowsForRange(state.usageEvents, state.usageRollups ?? [], dashboardRange), [state.usageEvents, state.usageRollups, dashboardRange]);
@@ -59,13 +60,48 @@ export function Dashboard({ state }: { state: AppState }) {
   const topProvider = useMemo(() => buildTopProviderToken(state.providers, providerTokens), [state.providers, providerTokens]);
   const heatmap = useMemo(() => buildTokenHeatmap(rows, dashboardRange), [rows, dashboardRange]);
   const modelShares = useMemo(() => buildModelTokenShares(ranking), [ranking]);
+  const actions = useMemo(() => buildDashboardActions(state), [state]);
 
   return (
     <div className="page dashboard-page">
-      <div className="dashboard-greeting">
-        <span className="dashboard-spark" aria-hidden="true" />
-        <h2>What's up next, Developer?</h2>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description="Operational overview and next actions for the API Vault gateway."
+        actions={<StatusPill tone={state.cloudflared.running ? "ok" : "neutral"}>{state.cloudflared.running ? "Tunnel active" : "Tunnel off"}</StatusPill>}
+      />
+
+      <section className="dashboard-action-center" aria-label="Recommended actions">
+        <div className="dashboard-action-head">
+          <div>
+            <h3>Action Center</h3>
+            <p>{actions.length ? "Resolve these items to make the gateway ready for real traffic." : "The core setup is ready. Watch usage and provider health from here."}</p>
+          </div>
+          <span>{actions.length} open</span>
+        </div>
+        <div className="dashboard-action-grid">
+          {actions.length ? actions.map((action) => (
+            <article key={action.id} className={`dashboard-action-card dashboard-action-card--${action.tone}`}>
+              <div>
+                <StatusPill tone={action.tone}>{action.badge}</StatusPill>
+                <h4>{action.title}</h4>
+                <p>{action.description}</p>
+              </div>
+              <Button variant={action.tone === "fail" ? "danger" : "secondary"} onClick={() => onNavigate(action.tab)}>
+                {action.cta}
+              </Button>
+            </article>
+          )) : (
+            <article className="dashboard-action-card dashboard-action-card--ok">
+              <div>
+                <StatusPill tone="ok">Ready</StatusPill>
+                <h4>Gateway baseline is configured</h4>
+                <p>Providers, proxy tokens, and model mappings are present. Review recent usage when calls start flowing.</p>
+              </div>
+              <Button onClick={() => onNavigate("usage")}>Open usage log</Button>
+            </article>
+          )}
+        </div>
+      </section>
 
       <div className="dashboard-workspace">
         <section className="dashboard-panel dashboard-main-panel">
@@ -465,6 +501,87 @@ function buildModelTokenShares(ranking: Array<{ label: string; tokens: number; i
     percent: (item.tokens / total) * 100,
     color: colors[index % colors.length]
   }));
+}
+
+interface DashboardAction {
+  id: string;
+  title: string;
+  description: string;
+  badge: string;
+  cta: string;
+  tab: AppTab;
+  tone: "ok" | "fail" | "warn" | "neutral";
+}
+
+function buildDashboardActions(state: AppState): DashboardAction[] {
+  const actions: DashboardAction[] = [];
+  const hasProviders = state.providers.length > 0;
+  const hasProxyTokens = state.proxyTokens.length > 0;
+  const hasModelMappings = state.proxyTokens.some((token) => token.allowedModels.length > 0);
+  const failedEvents = state.usageEvents.filter((event) => !event.ok).length;
+  const hasLocalServices = state.localServices.length > 0;
+
+  if (!hasProviders) {
+    actions.push({
+      id: "providers",
+      title: "Add a Provider",
+      description: "Connect at least one upstream provider before clients can route requests.",
+      badge: "Setup",
+      cta: "Add provider",
+      tab: "providers",
+      tone: "warn"
+    });
+  }
+
+  if (hasProviders && !hasProxyTokens) {
+    actions.push({
+      id: "proxy-tokens",
+      title: "Create a Proxy Token",
+      description: "Issue a scoped token so external clients can call the public proxy without real provider keys.",
+      badge: "Access",
+      cta: "Create token",
+      tab: "proxy-tokens",
+      tone: "warn"
+    });
+  }
+
+  if (hasProxyTokens && !hasModelMappings) {
+    actions.push({
+      id: "model-mapping",
+      title: "Configure Model Mapping",
+      description: "Map public model names to provider models so proxy calls resolve predictably.",
+      badge: "Routing",
+      cta: "Edit mappings",
+      tab: "proxy-tokens",
+      tone: "warn"
+    });
+  }
+
+  if (failedEvents > 0) {
+    actions.push({
+      id: "failed-usage",
+      title: "Review Failed Requests",
+      description: `${failedEvents} usage event${failedEvents === 1 ? "" : "s"} failed. Inspect status, upstream URL, latency, and error details.`,
+      badge: "Failure",
+      cta: "Open usage",
+      tab: "usage",
+      tone: "fail"
+    });
+  }
+
+  if (!state.cloudflared.running && hasLocalServices) {
+    actions.push({
+      id: "cloudflared",
+      title: "Start Tunnel for Local Services",
+      description: "Local services are configured, but Cloudflared is off. Start a tunnel to expose public service proxy URLs.",
+      badge: "Tunnel",
+      cta: "Open services",
+      tab: "local-services",
+      tone: "neutral"
+    });
+  }
+
+  return actions;
 }
 
 

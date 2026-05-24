@@ -4,6 +4,7 @@ import { ProxyServer } from "../main/proxy";
 import { VaultStore } from "../main/store";
 import { DATA_PATH, DEFAULT_PORT, LISTEN_HOST } from "./config/serverConfig";
 import { applyCors } from "./middlewares/cors";
+import { AdminSessionManager } from "./middlewares/adminSession";
 import { sendError } from "./utils/responses";
 import { serveStatic } from "./utils/staticAssets";
 import { startAutoSync } from "./services/autoSyncService";
@@ -14,9 +15,11 @@ export interface LocalServerContext {
   store: VaultStore;
   proxy: ProxyServer;
   cloudflared?: CloudflaredManager;
+  adminSessions?: AdminSessionManager;
 }
 
 export function createApiServer(context: LocalServerContext) {
+  context.adminSessions ??= new AdminSessionManager();
   return createServer((req, res) => {
     handleRequest(req, res, context).catch((error) => {
       sendError(res, error);
@@ -61,7 +64,8 @@ if (require.main === module) {
   const store = new VaultStore(DATA_PATH);
   const proxy = new ProxyServer(store);
   const cloudflared = new CloudflaredManager();
-  const server = createApiServer({ store, proxy, cloudflared });
+  const adminSessions = new AdminSessionManager();
+  const server = createApiServer({ store, proxy, cloudflared, adminSessions });
 
   startAutoSync(store);
   warnIfPublicBindIsRisky(store);
