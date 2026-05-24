@@ -164,6 +164,7 @@ export interface PublicProxyResolution {
 export interface AccountPoolForConnector {
   id: string;
   name: string;
+  kind: AccountPoolKind;
   baseUrl: string;
   managementUrl?: string;
   authsDirectory?: string;
@@ -782,6 +783,7 @@ export class VaultStore {
     return {
       id: pool.id,
       name: pool.name,
+      kind: pool.kind,
       baseUrl: pool.baseUrl,
       managementUrl: pool.managementUrl,
       authsDirectory: pool.authsDirectory,
@@ -846,8 +848,9 @@ export class VaultStore {
     if (!pool.apiKey) throw badRequest("Account pool proxy API key is required before creating a provider", "account_pool_api_key_required");
 
     const now = new Date().toISOString();
-    const providerBaseUrl = cpaProviderBaseUrl(pool.baseUrl);
+    const providerBaseUrl = accountPoolProviderBaseUrl(pool.kind, pool.baseUrl);
     const proxyApiKey = decryptString(key, pool.apiKey);
+    const poolLabel = accountPoolKindLabel(pool.kind);
     let provider = pool.providerId ? this.data.providers.find((item) => item.id === pool.providerId) : undefined;
 
     if (!provider) {
@@ -884,14 +887,14 @@ export class VaultStore {
     if (!firstKey) {
       provider.apiKeys.push({
         id: randomUUID(),
-        name: "CPA proxy",
+        name: `${poolLabel} proxy`,
         apiKey: encryptString(key, proxyApiKey),
         keyHash,
         keyMasked: maskKey(proxyApiKey),
         createdAt: now
       });
     } else if (firstKey.keyHash !== keyHash) {
-      firstKey.name = firstKey.name || "CPA proxy";
+      firstKey.name = firstKey.name || `${poolLabel} proxy`;
       firstKey.apiKey = encryptString(key, proxyApiKey);
       firstKey.keyHash = keyHash;
       firstKey.keyMasked = maskKey(proxyApiKey);
@@ -1965,6 +1968,14 @@ function normalizeOptionalText(value: unknown): string | undefined {
 function normalizeAccountPoolKind(value: unknown): AccountPoolKind {
   if (value === undefined || value === "cpa") return "cpa";
   throw badRequest(`Unsupported account pool kind: ${String(value)}`, "unsupported_account_pool_kind");
+}
+
+function accountPoolProviderBaseUrl(kind: AccountPoolKind, baseUrl: string): string {
+  return cpaProviderBaseUrl(baseUrl);
+}
+
+function accountPoolKindLabel(kind: AccountPoolKind): string {
+  return "CPA";
 }
 
 function normalizeModelNames(value: unknown): string[] {

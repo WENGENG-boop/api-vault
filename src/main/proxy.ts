@@ -52,11 +52,12 @@ export class ProxyServer {
     return this.port;
   }
 
-  async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  async handleRequest(req: IncomingMessage, res: ServerResponse, publicPort?: number): Promise<void> {
+    const gatewayPort = publicPort ?? this.port;
     const incomingUrl = new URL(req.url ?? "/", "http://127.0.0.1");
     const publicMatch = incomingUrl.pathname.match(/^\/proxy\/v1(\/.*)?$/);
     if (publicMatch) {
-      await this.handlePublicProxy(req, res, incomingUrl, publicMatch[1] ?? "/");
+      await this.handlePublicProxy(req, res, incomingUrl, publicMatch[1] ?? "/", undefined, gatewayPort);
       return;
     }
     const globalMatch = incomingUrl.pathname.match(/^\/proxy\/(openai|anthropic|auto)(\/.*)?$/);
@@ -68,7 +69,7 @@ export class ProxyServer {
       return;
     }
     if (providerMatch && extractProxyToken(req.headers)?.startsWith("proxy_")) {
-      await this.handlePublicProxy(req, res, incomingUrl, providerMatch[2] ?? "/", decodeURIComponent(providerMatch[1]));
+      await this.handlePublicProxy(req, res, incomingUrl, providerMatch[2] ?? "/", decodeURIComponent(providerMatch[1]), gatewayPort);
       return;
     }
 
@@ -99,7 +100,7 @@ export class ProxyServer {
         provider = this.store.getProviderForIncomingApiKey(incomingKey, protocol);
         suffixPath = requestedSuffixPath;
         gatewayType = gatewayName;
-        gatewayBaseUrl = buildProtocolGatewayBaseUrl(this.port, gatewayName);
+        gatewayBaseUrl = buildProtocolGatewayBaseUrl(gatewayPort, gatewayName);
         effectiveProtocol = protocol;
       } else if (byKeyMatch) {
         const incomingKey = extractIncomingApiKey(req.headers);
@@ -110,7 +111,7 @@ export class ProxyServer {
         provider = this.store.getProviderForIncomingApiKey(incomingKey);
         suffixPath = byKeyMatch[1] ?? "/";
         gatewayType = "provider";
-        gatewayBaseUrl = buildProviderGatewayBaseUrl(this.port, provider);
+        gatewayBaseUrl = buildProviderGatewayBaseUrl(gatewayPort, provider);
         effectiveProtocol = effectiveProtocolForProvider(provider.protocol, req.headers, suffixPath);
       } else {
         const providerId = decodeURIComponent(providerMatch![1]);
@@ -123,7 +124,7 @@ export class ProxyServer {
             provider = this.store.getProviderForProxy(providerId, legacyRoute.keyId);
             suffixPath = legacyRoute.suffixPath;
             gatewayType = "legacy-key";
-            gatewayBaseUrl = buildLegacyGatewayBaseUrl(this.port, provider);
+            gatewayBaseUrl = buildLegacyGatewayBaseUrl(gatewayPort, provider);
             effectiveProtocol = effectiveProtocolForProvider(provider.protocol, req.headers, suffixPath);
           } catch (error) {
             const appError = toAppError(error);
@@ -131,14 +132,14 @@ export class ProxyServer {
             provider = this.store.getProviderForProviderProxy(providerId, incomingKey);
             suffixPath = providerSuffix;
             gatewayType = "provider";
-            gatewayBaseUrl = buildProviderGatewayBaseUrl(this.port, provider);
+            gatewayBaseUrl = buildProviderGatewayBaseUrl(gatewayPort, provider);
             effectiveProtocol = effectiveProtocolForProvider(provider.protocol, req.headers, suffixPath);
           }
         } else {
           provider = this.store.getProviderForProviderProxy(providerId, incomingKey);
           suffixPath = providerSuffix;
           gatewayType = "provider";
-          gatewayBaseUrl = buildProviderGatewayBaseUrl(this.port, provider);
+          gatewayBaseUrl = buildProviderGatewayBaseUrl(gatewayPort, provider);
           effectiveProtocol = effectiveProtocolForProvider(provider.protocol, req.headers, suffixPath);
         }
       }
@@ -322,7 +323,7 @@ export class ProxyServer {
     }
   }
 
-  private async handlePublicProxy(req: IncomingMessage, res: ServerResponse, incomingUrl: URL, suffixPath: string, scopedProviderId?: string): Promise<void> {
+  private async handlePublicProxy(req: IncomingMessage, res: ServerResponse, incomingUrl: URL, suffixPath: string, scopedProviderId?: string, publicPort?: number): Promise<void> {
     const started = Date.now();
     const startedAt = new Date(started).toISOString();
     const endpoint = scopedProviderId ? `/proxy/${scopedProviderId}${suffixPath}` : `/proxy/v1${suffixPath}`;
@@ -444,7 +445,7 @@ export class ProxyServer {
           try {
             const usage = extractUsageFromSSE(protocol, finalBody, Buffer.concat(sseChunks), provider!.balanceConfig.responseCostPath);
             safeAppendUsage(this.store, {
-              ...baseUsageEvent({ provider: provider!, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? upstreamModel ?? requestModel }),
+              ...baseUsageEvent({ provider: provider!, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(publicPort ?? this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? upstreamModel ?? requestModel }),
               proxyTokenId,
               proxyTokenName,
               modelId: upstreamModel,
@@ -477,7 +478,7 @@ export class ProxyServer {
       res.end(responseBody);
       const usage = extractUsageFromResponse(protocol, finalBody, rawResponseBody, provider.balanceConfig.responseCostPath);
       safeAppendUsage(this.store, {
-        ...baseUsageEvent({ provider, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? upstreamModel ?? requestModel }),
+        ...baseUsageEvent({ provider, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(publicPort ?? this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? upstreamModel ?? requestModel }),
         proxyTokenId,
         proxyTokenName,
         modelId: upstreamModel,

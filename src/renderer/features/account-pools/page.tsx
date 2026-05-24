@@ -1,10 +1,11 @@
 import { useState } from "react";
-import type { AccountPool, AppState } from "../../../shared/types";
+import type { AccountPool, AccountPoolKind, AppState } from "../../../shared/types";
 import { apiClient } from "../../shared/api";
 
 interface AccountPoolForm {
   id?: string;
   name: string;
+  kind: AccountPoolKind;
   baseUrl: string;
   apiKey: string;
   managementUrl: string;
@@ -34,6 +35,7 @@ export function AccountPools({ state, setState, showMsg, showErr }: {
   function emptyForm(): AccountPoolForm {
     return {
       name: "",
+      kind: "cpa",
       baseUrl: "",
       apiKey: "",
       managementUrl: "",
@@ -53,6 +55,7 @@ export function AccountPools({ state, setState, showMsg, showErr }: {
     setForm({
       id: pool.id,
       name: pool.name,
+      kind: pool.kind,
       baseUrl: pool.baseUrl,
       apiKey: "",
       managementUrl: pool.managementUrl ?? "",
@@ -69,7 +72,7 @@ export function AccountPools({ state, setState, showMsg, showErr }: {
       const next = await apiClient.saveAccountPool({
         id: form.id,
         name: form.name,
-        kind: "cpa",
+        kind: form.kind,
         baseUrl: form.baseUrl,
         apiKey: form.apiKey,
         managementUrl: form.managementUrl,
@@ -175,7 +178,7 @@ export function AccountPools({ state, setState, showMsg, showErr }: {
     setUploading((prev) => ({ ...prev, [pool.id]: true }));
     try {
       const { result } = await apiClient.uploadAccountPoolAuth(pool.id, draft);
-      showMsg(`Auth file uploaded: ${result.fileName}. Restart CPA if it does not auto-load auth files.`);
+      showMsg(`Auth file uploaded: ${result.fileName}. Restart ${poolKindLabel(pool.kind)} if it does not auto-load auth files.`);
       setAuthUploads((prev) => {
         const next = { ...prev };
         delete next[pool.id];
@@ -200,21 +203,26 @@ export function AccountPools({ state, setState, showMsg, showErr }: {
       </div>
 
       <div className="usage-hint">
-        Add a CPA or CLIProxyAPI backend, sync its OpenAI-compatible models, create a linked provider, then import those models into a Proxy Token.
+        Add a CPA / CLIProxyAPI backend, sync its OpenAI-compatible models, create a linked provider, then import those models into a Proxy Token.
       </div>
 
       {showForm && (
         <div className="form-card account-pool-form">
-          <h3>{form.id ? "Edit Account Pool" : "Add CPA Account Pool"}</h3>
+          <h3>{form.id ? "Edit Account Pool" : `Add ${poolKindLabel(form.kind)} Account Pool`}</h3>
           <div className="form-grid">
-            <label>Name
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="CPA Account Pool" />
+            <label>Backend Type
+              <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as AccountPoolKind })}>
+                <option value="cpa">CPA / CLIProxyAPI</option>
+              </select>
             </label>
-            <label>CPA Base URL
-              <input value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder="http://127.0.0.1:8317" />
+            <label>Name
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={`${poolKindLabel(form.kind)} Account Pool`} />
+            </label>
+            <label>{poolKindLabel(form.kind)} Base URL
+              <input value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} placeholder={baseUrlPlaceholder(form.kind)} />
             </label>
             <label>Proxy API Key
-              <input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={form.id ? "Leave blank to keep current key" : "CPA proxy API key"} />
+              <input type="password" value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={form.id ? "Leave blank to keep current key" : `${poolKindLabel(form.kind)} proxy API key`} />
             </label>
             <label>Management URL
               <input value={form.managementUrl} onChange={(e) => setForm({ ...form, managementUrl: e.target.value })} placeholder="Optional management API URL" />
@@ -253,7 +261,7 @@ export function AccountPools({ state, setState, showMsg, showErr }: {
               <div className="account-pool-card-head">
                 <div className="provider-summary-name">
                   <strong>{pool.name}</strong>
-                  <span className="provider-protocol">CPA</span>
+                  <span className="provider-protocol">{poolKindLabel(pool.kind)}</span>
                   <span className={`account-pool-status ${isAvailable ? "available" : isUnavailable ? "unavailable" : "unknown"}`}>
                     {pool.status}
                   </span>
@@ -299,16 +307,18 @@ export function AccountPools({ state, setState, showMsg, showErr }: {
                 </button>
               </div>
 
-              <div className="account-pool-upload-row">
-                <div>
-                  <span>Auth file</span>
-                  <strong>{authUploads[pool.id]?.fileName ?? (pool.authsDirectory ? "No file selected" : "Configure auths directory first")}</strong>
+              {pool.kind === "cpa" && (
+                <div className="account-pool-upload-row">
+                  <div>
+                    <span>Auth file</span>
+                    <strong>{authUploads[pool.id]?.fileName ?? (pool.authsDirectory ? "No file selected" : "Configure auths directory first")}</strong>
+                  </div>
+                  <input type="file" accept="application/json,.json" onChange={(event) => selectAuthFile(pool, event.target.files?.[0])} />
+                  <button onClick={() => uploadAuth(pool)} disabled={!pool.authsDirectory || !authUploads[pool.id] || uploading[pool.id]}>
+                    {uploading[pool.id] ? "Uploading..." : "Upload Auth"}
+                  </button>
                 </div>
-                <input type="file" accept="application/json,.json" onChange={(event) => selectAuthFile(pool, event.target.files?.[0])} />
-                <button onClick={() => uploadAuth(pool)} disabled={!pool.authsDirectory || !authUploads[pool.id] || uploading[pool.id]}>
-                  {uploading[pool.id] ? "Uploading..." : "Upload Auth"}
-                </button>
-              </div>
+              )}
 
               <div className="provider-actions account-pool-actions">
                 <button onClick={() => testPool(pool)} disabled={testing[pool.id]}>{testing[pool.id] ? "Testing..." : "Test"}</button>
@@ -323,4 +333,12 @@ export function AccountPools({ state, setState, showMsg, showErr }: {
       </div>
     </div>
   );
+}
+
+function poolKindLabel(kind: AccountPoolKind): string {
+  return "CPA";
+}
+
+function baseUrlPlaceholder(kind: AccountPoolKind): string {
+  return "http://127.0.0.1:8317";
 }

@@ -2,6 +2,7 @@
 import type { AccountPoolInput, AddKeyInput, ApiKeyInput, AppState, CloudflaredApiResponse, CloudflaredConfig, LocalService, LocalServiceProtocol, ProviderInput, ProviderModelInput, ProxyTokenInput } from "../../shared/types";
 import { syncBalance } from "../../main/balance";
 import { CloudflaredManager } from "../../main/cloudflared";
+import type { AccountPoolForConnector } from "../../main/store";
 import { testCpaConnection } from "../../main/cpaConnector";
 import { notFound, serviceUnavailable } from "../../main/errors";
 import type { VaultStore } from "../../main/store";
@@ -304,7 +305,7 @@ export async function handleApi(
   if (method === "POST" && accountPoolTest) {
     const poolId = decodeURIComponent(accountPoolTest[1]);
     const pool = store.getAccountPoolForConnector(poolId);
-    const result = await testCpaConnection({ baseUrl: pool.baseUrl, apiKey: pool.apiKey });
+    const result = await testAccountPoolConnection(pool);
     store.updateAccountPoolSyncResult(poolId, result);
     sendJson(res, 200, { result, state: getState() });
     return;
@@ -314,7 +315,7 @@ export async function handleApi(
   if (method === "POST" && accountPoolSync) {
     const poolId = decodeURIComponent(accountPoolSync[1]);
     const pool = store.getAccountPoolForConnector(poolId);
-    const result = await testCpaConnection({ baseUrl: pool.baseUrl, apiKey: pool.apiKey });
+    const result = await testAccountPoolConnection(pool);
     store.updateAccountPoolSyncResult(poolId, result);
     sendJson(res, 200, { result, state: getState() });
     return;
@@ -412,6 +413,10 @@ export async function handleApi(
   }
 
   throw notFound("API route not found", "api_route_not_found");
+}
+
+async function testAccountPoolConnection(pool: AccountPoolForConnector) {
+  return testCpaConnection({ baseUrl: pool.baseUrl, apiKey: pool.apiKey });
 }
 
 function withAdminToken(state: AppState, sessions?: AdminSessionManager): AppState & { adminToken?: string } {

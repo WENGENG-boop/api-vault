@@ -53,7 +53,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, context:
       await handleLocalServiceProxy(context.store, req, res, serviceId, suffixPath, url.search);
       return;
     }
-    await context.proxy.handleRequest(req, res);
+    await context.proxy.handleRequest(req, res, Number(url.port || DEFAULT_PORT));
     return;
   }
 
