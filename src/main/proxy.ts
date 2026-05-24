@@ -15,6 +15,7 @@ import {
   toResponseHeaders
 } from "./httpUtils";
 import { convertProxyResponse, prepareMultimodalProxyRequest, singleProtocolForProvider } from "./multimodal";
+import { parseProxyRoute } from "./proxyRoutes";
 
 export class ProxyServer {
   private server?: Server;
@@ -55,21 +56,18 @@ export class ProxyServer {
   async handleRequest(req: IncomingMessage, res: ServerResponse, publicPort?: number): Promise<void> {
     const gatewayPort = publicPort ?? this.port;
     const incomingUrl = new URL(req.url ?? "/", "http://127.0.0.1");
-    const publicMatch = incomingUrl.pathname.match(/^\/proxy\/v1(\/.*)?$/);
-    if (publicMatch) {
-      await this.handlePublicProxy(req, res, incomingUrl, publicMatch[1] ?? "/", undefined, gatewayPort);
+    const route = parseProxyRoute(incomingUrl.pathname);
+    if (route?.kind === "public") {
+      await this.handlePublicProxy(req, res, incomingUrl, route.suffixPath, undefined, gatewayPort);
       return;
     }
-    const globalMatch = incomingUrl.pathname.match(/^\/proxy\/(openai|anthropic|auto)(\/.*)?$/);
-    const byKeyMatch = incomingUrl.pathname.match(/^\/proxy\/by-key(\/.*)?$/);
-    const providerMatch = incomingUrl.pathname.match(/^\/proxy\/([^/]+)(\/.*)?$/);
-    if (!globalMatch && !byKeyMatch && !providerMatch) {
+    if (!route) {
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "Unknown proxy route" }));
       return;
     }
-    if (providerMatch && extractProxyToken(req.headers)?.startsWith("proxy_")) {
-      await this.handlePublicProxy(req, res, incomingUrl, providerMatch[2] ?? "/", decodeURIComponent(providerMatch[1]), gatewayPort);
+    if (route.kind === "provider" && extractProxyToken(req.headers)?.startsWith("proxy_")) {
+      await this.handlePublicProxy(req, res, incomingUrl, route.suffixPath, route.providerId, gatewayPort);
       return;
     }
 
@@ -79,9 +77,9 @@ export class ProxyServer {
     let gatewayBaseUrl: string | undefined;
     let effectiveProtocol: ApiProtocol;
     try {
-      if (globalMatch) {
-        const gatewayName = globalMatch[1] as "openai" | "anthropic" | "auto";
-        const requestedSuffixPath = globalMatch[2] ?? "/";
+      if (route.kind === "global") {
+        const { gatewayName } = route;
+        const requestedSuffixPath = route.suffixPath;
         const protocol = gatewayName === "auto"
           ? inferProtocolFromRequest(req.headers, requestedSuffixPath)
           : protocolForGateway(gatewayName);
@@ -102,20 +100,20 @@ export class ProxyServer {
         gatewayType = gatewayName;
         gatewayBaseUrl = buildProtocolGatewayBaseUrl(gatewayPort, gatewayName);
         effectiveProtocol = protocol;
-      } else if (byKeyMatch) {
+      } else if (route.kind === "by-key") {
         const incomingKey = extractIncomingApiKey(req.headers);
         if (!incomingKey) {
           writeJson(res, 401, { error: "Missing Authorization Bearer token or x-api-key", code: "missing_api_key" });
           return;
         }
         provider = this.store.getProviderForIncomingApiKey(incomingKey);
-        suffixPath = byKeyMatch[1] ?? "/";
+        suffixPath = route.suffixPath;
         gatewayType = "provider";
         gatewayBaseUrl = buildProviderGatewayBaseUrl(gatewayPort, provider);
         effectiveProtocol = effectiveProtocolForProvider(provider.protocol, req.headers, suffixPath);
       } else {
-        const providerId = decodeURIComponent(providerMatch![1]);
-        const providerSuffix = providerMatch![2] ?? "/";
+        const { providerId } = route;
+        const providerSuffix = route.suffixPath;
         const incomingKey = extractIncomingApiKey(req.headers);
         const legacyRoute = parseLegacyKeyRoute(providerSuffix);
 

@@ -14,12 +14,38 @@ import { sendJson } from "../utils/responses";
 import { writeAccountPoolAuthFile } from "../services/accountPoolAuthService";
 import { syncProviderModelCatalog } from "../services/modelCatalogService";
 import { testUpstreamUrl } from "../services/upstreamProbeService";
+import { publicLockedAppState } from "../../shared/appState";
 
 export interface ApiRouteContext {
   store: VaultStore;
   cloudflared?: CloudflaredManager;
   adminSessions?: AdminSessionManager;
 }
+
+const API_ROUTES = {
+  proxyToken: /^\/api\/proxy-tokens\/([^/]+)$/,
+  proxyTokenSecret: /^\/api\/proxy-tokens\/([^/]+)\/secret$/,
+  proxyTokenRegenerate: /^\/api\/proxy-tokens\/([^/]+)\/regenerate$/,
+  providerKeys: /^\/api\/providers\/([^/]+)\/keys$/,
+  providerKey: /^\/api\/providers\/([^/]+)\/keys\/([^/]+)$/,
+  providerKeySecret: /^\/api\/providers\/([^/]+)\/keys\/([^/]+)\/secret$/,
+  providerKeyProxyUrl: /^\/api\/providers\/([^/]+)\/keys\/([^/]+)\/proxy-url$/,
+  provider: /^\/api\/providers\/([^/]+)$/,
+  providerSecret: /^\/api\/providers\/([^/]+)\/secret$/,
+  providerProxyUrl: /^\/api\/providers\/([^/]+)\/proxy-url$/,
+  providerTestBalance: /^\/api\/providers\/([^/]+)\/test-balance$/,
+  modelCatalogSyncProvider: /^\/api\/model-catalog\/sync-provider\/([^/]+)$/,
+  modelCatalogItem: /^\/api\/model-catalog\/([^/]+)$/,
+  accountPool: /^\/api\/account-pools\/([^/]+)$/,
+  accountPoolCreateProvider: /^\/api\/account-pools\/([^/]+)\/create-provider$/,
+  accountPoolTest: /^\/api\/account-pools\/([^/]+)\/test$/,
+  accountPoolSyncModels: /^\/api\/account-pools\/([^/]+)\/sync-models$/,
+  accountPoolImportModels: /^\/api\/account-pools\/([^/]+)\/import-models-to-proxy-token$/,
+  accountPoolUploadAuth: /^\/api\/account-pools\/([^/]+)\/upload-auth$/,
+  localService: /^\/api\/local-services\/([^/]+)$/,
+  localServiceTest: /^\/api\/local-services\/([^/]+)\/test$/
+};
+
 export async function handleApi(
   req: IncomingMessage,
   res: ServerResponse,
@@ -81,7 +107,7 @@ export async function handleApi(
     return;
   }
 
-  const proxyTokenMatch = url.pathname.match(/^\/api\/proxy-tokens\/([^/]+)$/);
+  const proxyTokenMatch = url.pathname.match(API_ROUTES.proxyToken);
   if (proxyTokenMatch && method === "POST") {
     const body = await readJsonBody<ProxyTokenInput>(req);
     store.updateProxyToken(decodeURIComponent(proxyTokenMatch[1]), body);
@@ -95,22 +121,21 @@ export async function handleApi(
     return;
   }
 
-  const proxyTokenSecretMatch = url.pathname.match(/^\/api\/proxy-tokens\/([^/]+)\/secret$/);
+  const proxyTokenSecretMatch = url.pathname.match(API_ROUTES.proxyTokenSecret);
   if (proxyTokenSecretMatch && method === "GET") {
     const secret = store.getProxyTokenPlaintext(decodeURIComponent(proxyTokenSecretMatch[1]));
     sendJson(res, 200, { secret });
     return;
   }
 
-  const proxyTokenSecretSetMatch = url.pathname.match(/^\/api\/proxy-tokens\/([^/]+)\/secret$/);
-  if (proxyTokenSecretSetMatch && method === "POST") {
+  if (proxyTokenSecretMatch && method === "POST") {
     const body = await readJsonBody<{ secret: string }>(req);
-    store.setProxyTokenPlaintext(decodeURIComponent(proxyTokenSecretSetMatch[1]), body.secret);
+    store.setProxyTokenPlaintext(decodeURIComponent(proxyTokenSecretMatch[1]), body.secret);
     sendJson(res, 200, getState());
     return;
   }
 
-  const proxyTokenRegen = url.pathname.match(/^\/api\/proxy-tokens\/([^/]+)\/regenerate$/);
+  const proxyTokenRegen = url.pathname.match(API_ROUTES.proxyTokenRegenerate);
   if (proxyTokenRegen && method === "POST") {
     const result = store.regenerateProxyToken(decodeURIComponent(proxyTokenRegen[1]));
     sendJson(res, 200, { secret: result.secret, token: result.token, state: getState() });
@@ -145,7 +170,7 @@ export async function handleApi(
     return;
   }
 
-  const keyAddMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/keys$/);
+  const keyAddMatch = url.pathname.match(API_ROUTES.providerKeys);
   if (method === "POST" && keyAddMatch) {
     const body = await readJsonBody<ApiKeyInput>(req);
     store.addApiKey(decodeURIComponent(keyAddMatch[1]), body);
@@ -153,14 +178,14 @@ export async function handleApi(
     return;
   }
 
-  const keyDeleteMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/keys\/([^/]+)$/);
+  const keyDeleteMatch = url.pathname.match(API_ROUTES.providerKey);
   if (method === "DELETE" && keyDeleteMatch) {
     store.deleteApiKey(decodeURIComponent(keyDeleteMatch[1]), decodeURIComponent(keyDeleteMatch[2]));
     sendJson(res, 200, getState());
     return;
   }
 
-  const keySecretMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/keys\/([^/]+)\/secret$/);
+  const keySecretMatch = url.pathname.match(API_ROUTES.providerKeySecret);
   if (method === "GET" && keySecretMatch) {
     const kind = url.searchParams.get("kind") === "query" ? "query" : "api";
     const secret = store.getApiKeyPlaintext(
@@ -172,7 +197,7 @@ export async function handleApi(
     return;
   }
 
-  const keyProxyUrlMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/keys\/([^/]+)\/proxy-url$/);
+  const keyProxyUrlMatch = url.pathname.match(API_ROUTES.providerKeyProxyUrl);
   if (method === "GET" && keyProxyUrlMatch) {
     if (!proxyPort) throw serviceUnavailable("Proxy is not running", "proxy_offline");
     const providerId = decodeURIComponent(keyProxyUrlMatch[1]);
@@ -185,14 +210,14 @@ export async function handleApi(
     return;
   }
 
-  const providerDelete = url.pathname.match(/^\/api\/providers\/([^/]+)$/);
+  const providerDelete = url.pathname.match(API_ROUTES.provider);
   if (method === "DELETE" && providerDelete) {
     store.deleteProvider(decodeURIComponent(providerDelete[1]));
     sendJson(res, 200, getState());
     return;
   }
 
-  const secretMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/secret$/);
+  const secretMatch = url.pathname.match(API_ROUTES.providerSecret);
   if (method === "GET" && secretMatch) {
     const state = getState();
     const providerSafe = state.providers.find((item) => item.id === decodeURIComponent(secretMatch[1]));
@@ -204,7 +229,7 @@ export async function handleApi(
     return;
   }
 
-  const proxyUrlMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/proxy-url$/);
+  const proxyUrlMatch = url.pathname.match(API_ROUTES.providerProxyUrl);
   if (method === "GET" && proxyUrlMatch) {
     if (!proxyPort) throw serviceUnavailable("Proxy is not running", "proxy_offline");
     const state = getState();
@@ -214,7 +239,7 @@ export async function handleApi(
     return;
   }
 
-  const balanceMatch = url.pathname.match(/^\/api\/providers\/([^/]+)\/test-balance$/);
+  const balanceMatch = url.pathname.match(API_ROUTES.providerTestBalance);
   if (method === "POST" && balanceMatch) {
     const provider = store.getBalanceProvider(decodeURIComponent(balanceMatch[1]));
     const result = await syncBalance(provider);
@@ -249,7 +274,7 @@ export async function handleApi(
     return;
   }
 
-  const modelCatalogSync = url.pathname.match(/^\/api\/model-catalog\/sync-provider\/([^/]+)$/);
+  const modelCatalogSync = url.pathname.match(API_ROUTES.modelCatalogSyncProvider);
   if (method === "POST" && modelCatalogSync) {
     const providerId = decodeURIComponent(modelCatalogSync[1]);
     const result = await syncProviderModelCatalog(store, providerId);
@@ -257,7 +282,7 @@ export async function handleApi(
     return;
   }
 
-  const modelCatalogItem = url.pathname.match(/^\/api\/model-catalog\/([^/]+)$/);
+  const modelCatalogItem = url.pathname.match(API_ROUTES.modelCatalogItem);
   if (modelCatalogItem && method === "POST") {
     const body = await readJsonBody<ProviderModelInput>(req);
     const model = store.upsertProviderModel({ ...body, id: decodeURIComponent(modelCatalogItem[1]) });
@@ -287,21 +312,21 @@ export async function handleApi(
     return;
   }
 
-  const accountPoolDelete = url.pathname.match(/^\/api\/account-pools\/([^/]+)$/);
+  const accountPoolDelete = url.pathname.match(API_ROUTES.accountPool);
   if (method === "DELETE" && accountPoolDelete) {
     store.deleteAccountPool(decodeURIComponent(accountPoolDelete[1]));
     sendJson(res, 200, getState());
     return;
   }
 
-  const accountPoolCreateProvider = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/create-provider$/);
+  const accountPoolCreateProvider = url.pathname.match(API_ROUTES.accountPoolCreateProvider);
   if (method === "POST" && accountPoolCreateProvider) {
     const result = store.ensureAccountPoolProvider(decodeURIComponent(accountPoolCreateProvider[1]));
     sendJson(res, 200, { ...result, state: getState() });
     return;
   }
 
-  const accountPoolTest = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/test$/);
+  const accountPoolTest = url.pathname.match(API_ROUTES.accountPoolTest);
   if (method === "POST" && accountPoolTest) {
     const poolId = decodeURIComponent(accountPoolTest[1]);
     const pool = store.getAccountPoolForConnector(poolId);
@@ -311,7 +336,7 @@ export async function handleApi(
     return;
   }
 
-  const accountPoolSync = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/sync-models$/);
+  const accountPoolSync = url.pathname.match(API_ROUTES.accountPoolSyncModels);
   if (method === "POST" && accountPoolSync) {
     const poolId = decodeURIComponent(accountPoolSync[1]);
     const pool = store.getAccountPoolForConnector(poolId);
@@ -321,7 +346,7 @@ export async function handleApi(
     return;
   }
 
-  const accountPoolImport = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/import-models-to-proxy-token$/);
+  const accountPoolImport = url.pathname.match(API_ROUTES.accountPoolImportModels);
   if (method === "POST" && accountPoolImport) {
     const body = await readJsonBody<{ proxyTokenId: string; modelNames?: string[] }>(req);
     const result = store.importAccountPoolModelsToProxyToken(decodeURIComponent(accountPoolImport[1]), body);
@@ -329,7 +354,7 @@ export async function handleApi(
     return;
   }
 
-  const accountPoolUploadAuth = url.pathname.match(/^\/api\/account-pools\/([^/]+)\/upload-auth$/);
+  const accountPoolUploadAuth = url.pathname.match(API_ROUTES.accountPoolUploadAuth);
   if (method === "POST" && accountPoolUploadAuth) {
     const pool = store.getAccountPoolForConnector(decodeURIComponent(accountPoolUploadAuth[1]));
     const body = await readJsonBody<{ fileName: string; content: string }>(req);
@@ -351,14 +376,14 @@ export async function handleApi(
     return;
   }
 
-  const localServiceDelete = url.pathname.match(/^\/api\/local-services\/([^/]+)$/);
+  const localServiceDelete = url.pathname.match(API_ROUTES.localService);
   if (method === "DELETE" && localServiceDelete) {
     store.deleteLocalService(decodeURIComponent(localServiceDelete[1]));
     sendJson(res, 200, getState());
     return;
   }
 
-  const localServiceTest = url.pathname.match(/^\/api\/local-services\/([^/]+)\/test$/);
+  const localServiceTest = url.pathname.match(API_ROUTES.localServiceTest);
   if (method === "POST" && localServiceTest) {
     const serviceId = decodeURIComponent(localServiceTest[1]);
     const service = store.getLocalService(serviceId);
@@ -427,26 +452,5 @@ function withAdminToken(state: AppState, sessions?: AdminSessionManager): AppSta
 }
 
 function getPublicState(store: VaultStore, proxyPort?: number): AppState {
-  return {
-    initialized: store.status.initialized,
-    unlocked: false,
-    proxyPort,
-    providers: [],
-    proxyTokens: [],
-    accountPools: [],
-    modelCatalog: [],
-    usageEvents: [],
-    usageRollups: [],
-    balanceSnapshots: [],
-    totals: {
-      totalCalls: 0,
-      callsToday: 0,
-      okCalls: 0,
-      failedCalls: 0,
-      realCostTotal: 0,
-      realCostCount: 0
-    },
-    localServices: [],
-    cloudflared: { running: false }
-  };
+  return publicLockedAppState(store.status.initialized, proxyPort);
 }

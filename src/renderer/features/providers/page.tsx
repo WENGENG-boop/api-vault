@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { AddKeyInput, ApiProtocol, AppState, BalanceConfig, ProviderSafe } from "../../../shared/types";
 import { apiClient, copyTextToClipboard } from "../../shared/api";
 import { defaultBalanceConfig } from "../../shared/config";
-import { UrlTestIndicator, UrlTestStatusLine, type UrlTestStatus } from "../../shared/components";
+import { UrlTestIndicator, UrlTestStatusLine, type UrlTestStatus, getLatencyColorClass } from "../../shared/components";
 import { aggregateRows, buildAnalyticsRows, compactNumber, globalProxyBaseUrl, statsCost } from "../../shared/utils";
 
 interface ProviderKeyForm {
@@ -236,11 +236,15 @@ export function Providers({ state, setState, showMsg, showErr }: {
               <div className="url-input-row">
                 <input value={form.baseUrl} onChange={(e) => { setForm({ ...form, baseUrl: e.target.value }); setFormTest(undefined); }} placeholder="https://api.openai.com/v1" />
                 <UrlTestIndicator test={formTest} />
-                <button type="button" onClick={testFormUrl} disabled={!form.baseUrl?.trim() || formTest?.testing}>Test</button>
+                <button type="button" className="btn-test-action" onClick={testFormUrl} disabled={!form.baseUrl?.trim() || formTest?.testing}>{formTest?.testing ? "Testing..." : "Test"}</button>
               </div>
               {formTest && !formTest.testing && (
                 <span className={`url-test-msg ${formTest.ok ? "url-test-msg--ok" : "url-test-msg--fail"}`}>
-                  {formTest.ok ? `OK ${formTest.status} - ${formTest.latencyMs}ms` : `Failed: ${formTest.error ?? `HTTP ${formTest.status ?? "?"}`}`}
+                  {formTest.ok ? (
+                    <>
+                      OK {formTest.status} - <strong className={getLatencyColorClass(formTest.latencyMs)}>{formTest.latencyMs}ms</strong>
+                    </>
+                  ) : `Failed: ${formTest.error ?? `HTTP ${formTest.status ?? "?"}`}`}
                 </span>
               )}
             </label>
@@ -356,7 +360,7 @@ export function Providers({ state, setState, showMsg, showErr }: {
                   <div className="provider-url">
                     <UrlTestIndicator test={selectedProviderTest} />
                     <span>{selectedProvider.baseUrl}</span>
-                    <button type="button" className="url-test-retry" onClick={() => runProviderUrlTest(selectedProvider)} disabled={urlTests[selectedProvider.id]?.testing}>Test now</button>
+                    <button type="button" className="btn-test-action" onClick={() => runProviderUrlTest(selectedProvider)} disabled={urlTests[selectedProvider.id]?.testing}>{urlTests[selectedProvider.id]?.testing ? "Testing..." : "Test"}</button>
                   </div>
                   <UrlTestStatusLine test={selectedProviderTest} />
                 </div>
@@ -384,11 +388,15 @@ export function Providers({ state, setState, showMsg, showErr }: {
                       <div className="url-input-row">
                         <input value={providerEditForm.baseUrl ?? ""} onChange={(event) => { setProviderEditForm({ ...providerEditForm, baseUrl: event.target.value }); setEditTest(undefined); }} />
                         <UrlTestIndicator test={editTest} />
-                        <button type="button" onClick={() => testEditUrl(selectedProvider?.id)} disabled={!providerEditForm.baseUrl?.trim() || editTest?.testing}>Test</button>
+                        <button type="button" className="btn-test-action" onClick={() => testEditUrl(selectedProvider?.id)} disabled={!providerEditForm.baseUrl?.trim() || editTest?.testing}>{editTest?.testing ? "Testing..." : "Test"}</button>
                       </div>
                       {editTest && !editTest.testing && (
                         <span className={`url-test-msg ${editTest.ok ? "url-test-msg--ok" : "url-test-msg--fail"}`}>
-                          {editTest.ok ? `OK ${editTest.status} - ${editTest.latencyMs}ms` : `Failed: ${editTest.error ?? `HTTP ${editTest.status ?? "?"}`}`}
+                          {editTest.ok ? (
+                            <>
+                              OK {editTest.status} - <strong className={getLatencyColorClass(editTest.latencyMs)}>{editTest.latencyMs}ms</strong>
+                            </>
+                          ) : `Failed: ${editTest.error ?? `HTTP ${editTest.status ?? "?"}`}`}
                         </span>
                       )}
                     </label>

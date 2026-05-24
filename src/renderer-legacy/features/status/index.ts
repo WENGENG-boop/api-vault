@@ -1,0 +1,1 @@
+export { StatusPage } from "./page";

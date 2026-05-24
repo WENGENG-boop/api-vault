@@ -1,6 +1,6 @@
 ﻿import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type {
   AddKeyInput,
   AccountPool,
@@ -34,6 +34,7 @@ import type {
   UsageRollup,
   UsageRollupPeriod
 } from "../shared/types";
+import { defaultBalanceConfig } from "../shared/balanceConfig";
 import { cpaProviderBaseUrl } from "./cpaConnector";
 import {
   createVaultHeader,
@@ -44,6 +45,7 @@ import {
   type VaultHeader
 } from "./crypto";
 import { badRequest, conflict, locked, notFound } from "./errors";
+import { generateProxyTokenSecret, hashApiKey, hashProxyToken, maskKey, maskProxyToken } from "./storeSecrets";
 
 interface ApiKeyRecord {
   id: string;
@@ -225,18 +227,6 @@ const RECENT_USAGE_LIMIT = 1000;
 const BALANCE_SNAPSHOT_LIMIT = 1000;
 const USAGE_FLUSH_INTERVAL_MS = 5000;
 const USAGE_FLUSH_BATCH_SIZE = 50;
-
-const defaultBalanceConfig: BalanceConfig = {
-  enabled: false,
-  url: "",
-  method: "GET",
-  headersJson: "{\n  \"Authorization\": \"Bearer {{queryKey}}\"\n}",
-  bodyTemplate: "",
-  balancePath: "",
-  spentPath: "",
-  currencyPath: "",
-  responseCostPath: ""
-};
 
 export class VaultStore {
   private readonly filePath: string;
@@ -1727,34 +1717,8 @@ function legacyDefaultKeyId(providerId: unknown): string {
   return `${base.replace(/[^a-zA-Z0-9_-]/g, "-")}-default-key`;
 }
 
-function maskKey(key: string): string {
-  const trimmed = key.trim();
-  if (trimmed.length <= 4) return "****";
-  if (/^sk-/i.test(trimmed)) return `sk-****${trimmed.slice(-4)}`;
-  if (/^pk-/i.test(trimmed)) return `pk-****${trimmed.slice(-4)}`;
-  if (/^bearer\s+/i.test(trimmed)) return `Bearer ****${trimmed.slice(-4)}`;
-  return `${trimmed.slice(0, 3)}****${trimmed.slice(-4)}`;
-}
-
-function generateProxyTokenSecret(): string {
-  return `proxy_${randomBytes(24).toString("base64url")}`;
-}
-
-function hashProxyToken(secret: string): string {
-  return createHash("sha256").update(secret, "utf8").digest("hex");
-}
-
-function hashApiKey(masterKey: Buffer, apiKey: string): string {
-  return createHmac("sha256", masterKey).update(apiKey.trim(), "utf8").digest("hex");
-}
-
 function allowProviderProxyWithoutIncomingKey(): boolean {
   return process.env.API_VAULT_ALLOW_PROVIDER_PROXY_WITHOUT_KEY === "1";
-}
-
-function maskProxyToken(secret: string): string {
-  const trimmed = secret.trim();
-  return trimmed.length <= 10 ? "proxy_****" : `${trimmed.slice(0, 10)}****${trimmed.slice(-4)}`;
 }
 
 function normalizeProxyTokenName(value: string): string {

@@ -96,6 +96,13 @@ export function ModelTokenLeaderboard({ data, limit, onItemClick }: {
   );
 }
 
+export function getLatencyColorClass(ms: number | undefined): string {
+  if (ms === undefined) return "";
+  if (ms < 300) return "latency-low";
+  if (ms < 1000) return "latency-medium";
+  return "latency-high";
+}
+
 export function UrlTestIndicator({ test }: { test?: UrlTestStatus }) {
   if (!test) return <span className="url-test-dot url-test-dot--idle" title="Not tested" />;
   if (test.testing) return <span className="url-test-dot url-test-dot--testing" title="Testing..." />;
@@ -113,7 +120,7 @@ export function UrlTestStatusLine({ test }: { test?: UrlTestStatus }) {
   if (test.ok) {
     return (
       <div className="url-test-status url-test-status--ok">
-        OK {test.status} - <strong>{test.latencyMs}ms</strong> - checked {time}
+        OK {test.status} - <strong className={getLatencyColorClass(test.latencyMs)}>{test.latencyMs}ms</strong> - checked {time}
       </div>
     );
   }

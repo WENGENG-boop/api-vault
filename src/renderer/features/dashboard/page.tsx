@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { AppState, CloudflaredStatus, LocalService, ProviderSafe, UsageEvent, UsageRollup } from "../../../shared/types";
 import type { AppTab } from "../../app/types";
 import { apiClient } from "../../shared/api";
-import { Button, EmptyChart, PageHeader, StatusPill } from "../../shared/components";
+import { Button, EmptyChart, PageHeader, StatusPill, getLatencyColorClass } from "../../shared/components";
 import { buildAnalyticsRows, buildModelTokenRanking, compactNumber, shortLabel, type AnalyticsRow } from "../../shared/utils";
 
 type DashboardRange = "all" | "30d" | "7d" | "today";
@@ -307,15 +307,20 @@ function ProviderConnectionStatus({ providers, localServices, cloudflared }: {
             <div className="connection-status-top">
               <span className={`connection-status-dot ${test?.testing ? "testing" : ok === undefined ? "idle" : ok ? "ok" : "fail"}`} />
               <strong>{shortLabel(item.name, 16)}</strong>
-              <button type="button" className="connection-test-btn" onClick={() => testItem(item)} disabled={test?.testing}>
-                {test?.testing ? "..." : "Test"}
+              <button type="button" className="btn-test-action" onClick={() => testItem(item)} disabled={test?.testing}>
+                {test?.testing ? "Testing..." : "Test"}
               </button>
             </div>
             <div className="connection-status-url">{shortLabel(item.baseUrl, 32)}</div>
             <div className="connection-status-latency">
               {ok === undefined ? "Unknown" : ok ? "Available" : "Unavailable"}
-              {latencyMs !== undefined ? ` - ${latencyMs}ms` : ""}
-              {checkedAt ? ` - ${new Date(checkedAt).toLocaleTimeString()}` : ""}
+              {latencyMs !== undefined ? (
+                <>
+                  {" - "}
+                  <strong className={getLatencyColorClass(latencyMs)}>{latencyMs}ms</strong>
+                </>
+              ) : ""}
+              {checkedAt ? ` - checked ${new Date(checkedAt).toLocaleTimeString()}` : ""}
             </div>
             {test?.error && <div className="connection-status-error">{shortLabel(test.error, 46)}</div>}
             {publicAccessUrl && <div className="connection-status-url">{shortLabel(publicAccessUrl, 42)}</div>}
