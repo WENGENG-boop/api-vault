@@ -1,1 +1,0 @@
-export { ProxyTokens } from "./page";
