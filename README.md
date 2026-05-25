@@ -2,6 +2,11 @@
 
 [中文说明](README.zh-CN.md)
 
+
+https://github.com/user-attachments/assets/6350106a-e6e0-4480-be09-4edfa6e6e195
+
+
+
 A self-hosted API key management dashboard with built-in reverse proxy, usage tracking, and balance sync. Manage multiple AI providers and API keys from one local interface.
 
 ## Why
