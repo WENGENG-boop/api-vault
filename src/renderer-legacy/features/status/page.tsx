@@ -343,7 +343,7 @@ function RecentCallsTable({ calls }: { calls: UsageEvent[] }) {
                 </td>
                 <td>{c.latencyMs}ms</td>
                 <td>{(c.totalTokens ?? ((c.inputTokens ?? 0) + (c.outputTokens ?? 0))) || "-"}</td>
-                <td className="status-call-error">{c.error ?? c.errorMessage ?? ""}</td>
+                <td className="status-call-error">{usageErrorText(c)}</td>
               </tr>
             ))}
           </tbody>
@@ -351,4 +351,8 @@ function RecentCallsTable({ calls }: { calls: UsageEvent[] }) {
       </div>
     </div>
   );
+}
+
+function usageErrorText(event: UsageEvent): string {
+  return event.error ?? event.errorMessage ?? "";
 }

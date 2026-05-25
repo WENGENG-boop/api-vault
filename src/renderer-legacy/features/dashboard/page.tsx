@@ -518,7 +518,9 @@ function buildDashboardActions(state: AppState): DashboardAction[] {
   const hasProviders = state.providers.length > 0;
   const hasProxyTokens = state.proxyTokens.length > 0;
   const hasModelMappings = state.proxyTokens.some((token) => token.allowedModels.length > 0);
-  const failedEvents = state.usageEvents.filter((event) => !event.ok).length;
+  const failedUsageEvents = state.usageEvents.filter((event) => !event.ok);
+  const failedEvents = failedUsageEvents.length;
+  const latestFailure = failedUsageEvents[0];
   const hasLocalServices = state.localServices.length > 0;
 
   if (!hasProviders) {
@@ -558,10 +560,12 @@ function buildDashboardActions(state: AppState): DashboardAction[] {
   }
 
   if (failedEvents > 0) {
+    const failureModel = latestFailure?.model ?? latestFailure?.modelId ?? "unknown model";
+    const failureError = latestFailure ? shortLabel(usageErrorText(latestFailure) || "No upstream error text recorded", 120) : "";
     actions.push({
       id: "failed-usage",
       title: "Review Failed Requests",
-      description: `${failedEvents} usage event${failedEvents === 1 ? "" : "s"} failed. Inspect status, upstream URL, latency, and error details.`,
+      description: `${failedEvents} usage event${failedEvents === 1 ? "" : "s"} failed. Latest: ${latestFailure?.status ?? "?"} on ${failureModel}. ${failureError}`,
       badge: "Failure",
       cta: "Open usage",
       tab: "usage",
@@ -582,6 +586,10 @@ function buildDashboardActions(state: AppState): DashboardAction[] {
   }
 
   return actions;
+}
+
+function usageErrorText(event: UsageEvent): string {
+  return event.error ?? event.errorMessage ?? "";
 }
 
 

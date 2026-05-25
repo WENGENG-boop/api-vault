@@ -32,7 +32,7 @@ export function Usage({ state }: { state: AppState }) {
         (e.baseUrl ?? "").toLowerCase().includes(lower) ||
         (e.gatewayBaseUrl ?? "").toLowerCase().includes(lower) ||
         gatewayLabel(e).toLowerCase().includes(lower) ||
-        (e.error ?? "").toLowerCase().includes(lower) ||
+        usageErrorText(e).toLowerCase().includes(lower) ||
         String(e.status).includes(lower))
     );
   }, [apiKeyId, filter, providerId, state.usageEvents]);
@@ -136,7 +136,7 @@ function UsageTable({ events, selectedEventId, onSelect }: { events: UsageEvent[
               <td>{e.outputTokens !== undefined ? compactNumber(e.outputTokens) : "-"}</td>
               <td>{e.realCost !== undefined ? formatMoney(e.realCost, e.currency) : "Not returned"}</td>
               <td>{e.latencyMs}ms</td>
-              <td>{e.error ?? ""}</td>
+              <td>{usageErrorText(e)}</td>
             </tr>
           ))}
         </tbody>
@@ -174,11 +174,15 @@ function UsageEventDetails({ event, onClose }: { event: UsageEvent; onClose: () 
       {!event.ok && (
         <div className="usage-detail-error">
           <strong>Error</strong>
-          <pre>{event.error ?? event.errorMessage ?? "No error text recorded"}</pre>
+          <pre>{usageErrorText(event) || "No error text recorded"}</pre>
         </div>
       )}
     </aside>
   );
+}
+
+function usageErrorText(event: UsageEvent): string {
+  return event.error ?? event.errorMessage ?? "";
 }
 
 function DetailItem({ label, value, code = false }: { label: string; value: string; code?: boolean }) {

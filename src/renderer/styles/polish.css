@@ -274,35 +274,35 @@ body,
 /* Spacing and Airiness Redesign: Open up grid gaps and widths */
 .dashboard-workspace {
   grid-template-columns: 1.6fr 1fr !important;
-  gap: 28px !important;
+  gap: 20px !important;
   max-width: 1280px !important;
   width: 100% !important;
-  align-items: stretch !important;
+  align-items: start !important;
 }
 
 .dashboard-main-panel {
   height: auto !important; /* Allow panel to flow naturally instead of forcing rigid limits */
-  min-height: var(--dashboard-column-height) !important;
-  padding: 24px !important;
+  min-height: auto !important;
+  padding: 16px 20px !important;
 }
 
 .dashboard-rail {
-  gap: 28px !important;
+  gap: 20px !important;
   align-items: stretch !important;
 }
 
 .dashboard-side-card {
   height: auto !important; /* Flow naturally */
-  min-height: 250px !important;
-  padding: 20px !important;
+  min-height: auto !important;
+  padding: 16px 20px !important;
 }
 
 .dashboard-connection-card {
-  min-height: 320px !important;
+  min-height: auto !important;
 }
 
 .dashboard-card-scroll {
-  max-height: 480px !important;
+  max-height: 250px !important;
   overflow-y: auto !important;
 }
 
@@ -334,6 +334,13 @@ body,
   transition: box-shadow 0.2s, border-color 0.2s !important;
 }
 
+/* Compact padding and spacing for main dashboard elements to prevent scrolling */
+.dashboard-panel,
+.dashboard-side-card {
+  padding: 16px 20px !important;
+  margin-bottom: 16px !important;
+}
+
 /* Gentle elevation on hover */
 .dashboard-panel:hover,
 .dashboard-side-card:hover,
@@ -351,8 +358,8 @@ body,
 }
 
 .dashboard-action-center {
-  padding: 24px !important;
-  margin-bottom: 28px !important;
+  padding: 16px 20px !important;
+  margin-bottom: 16px !important;
 }
 
 .dashboard-action-grid {
@@ -1778,4 +1785,285 @@ textarea:focus {
 .status-model-provider--operational { border-left: 3px solid var(--success) !important; }
 .status-model-provider--no-traffic { border-left: 3px solid #9aa0a6 !important; }
 
+/* =====================================================================
+   DASHBOARD VIEWPORT-FIT SYSTEM
+   Force the entire dashboard to fit within the visible viewport
+   without any scrolling. Uses flexbox + calc(100vh) approach.
+   ===================================================================== */
+
+/* Prevent scrolling on the content container when showing dashboard */
+.content:has(.dashboard-page) {
+  overflow: hidden !important;
+  padding: 10px 20px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* The dashboard page itself fills all remaining space */
+.dashboard-page {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  overflow: hidden !important;
+}
+
+/* Recording indicator - ultra compact */
+.content:has(.dashboard-page) .recording-indicator {
+  margin-bottom: 6px !important;
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Page header - compact */
+.content:has(.dashboard-page) .page-header {
+  margin-bottom: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.content:has(.dashboard-page) .page-header h2 {
+  font-size: 18px !important;
+}
+
+.content:has(.dashboard-page) .page-header p {
+  font-size: 11px !important;
+  margin-top: 0 !important;
+}
+
+/* ==========  ACTION CENTER - compact horizontal  ========== */
+.dashboard-page .dashboard-action-center {
+  flex-shrink: 0 !important;
+  padding: 8px 12px !important;
+  margin-bottom: 8px !important;
+}
+
+.dashboard-page .dashboard-action-head {
+  margin-bottom: 6px !important;
+}
+
+.dashboard-page .dashboard-action-head h3 {
+  font-size: 13px !important;
+  margin: 0 !important;
+}
+
+.dashboard-page .dashboard-action-head p {
+  font-size: 10px !important;
+  margin: 0 !important;
+}
+
+.dashboard-page .dashboard-action-head > span {
+  font-size: 11px !important;
+}
+
+/* Force action cards into a horizontal row */
+.dashboard-page .dashboard-action-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+  gap: 8px !important;
+}
+
+.dashboard-page .dashboard-action-card {
+  padding: 8px 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.dashboard-page .dashboard-action-card h4 {
+  font-size: 12px !important;
+  margin: 2px 0 1px !important;
+}
+
+.dashboard-page .dashboard-action-card p {
+  font-size: 10px !important;
+  margin: 0 !important;
+  line-height: 1.3 !important;
+}
+
+.dashboard-page .dashboard-action-card .btn-secondary,
+.dashboard-page .dashboard-action-card .btn-danger {
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+/* ==========  WORKSPACE GRID - stretch to fill + bottom-aligned  ========== */
+.dashboard-page .dashboard-workspace {
+  flex: 1 !important;
+  min-height: 0 !important;
+  gap: 14px !important;
+  align-items: stretch !important;
+  grid-template-rows: 1fr !important;  /* Force row to fill container, not auto-size to content */
+}
+
+/* Main panel fills its grid cell */
+.dashboard-page .dashboard-main-panel {
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 12px 16px !important;
+  margin-bottom: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+/* Panel toolbar */
+.dashboard-page .dashboard-panel-toolbar {
+  margin-bottom: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+.dashboard-page .dashboard-tab-group button {
+  padding: 4px 12px !important;
+  font-size: 12px !important;
+}
+
+/* Dashboard view fills remaining space inside main panel */
+.dashboard-page .dashboard-view {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Stat tiles - 4-column */
+.dashboard-page .dashboard-stat-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  margin-bottom: 6px !important;
+}
+
+.dashboard-page .dashboard-stat-tile {
+  padding: 5px 8px !important;
+  min-height: 44px !important;
+}
+
+.dashboard-page .dashboard-stat-tile span {
+  font-size: 10px !important;
+}
+
+.dashboard-page .dashboard-stat-tile strong {
+  font-size: 14px !important;
+}
+
+/* Heatmap - let it display fully, no clipping */
+.dashboard-page .dashboard-heatmap {
+  height: auto !important;
+  max-height: none !important;
+  margin: 8px 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+}
+
+.dashboard-page .dashboard-note {
+  margin-top: 2px !important;
+  font-size: 10px !important;
+  max-height: 16px !important;
+}
+
+/* ==========  RIGHT RAIL - flex column, stretch to match main panel  ========== */
+.dashboard-page .dashboard-rail {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Top provider card - fixed size, doesn't grow */
+.dashboard-page .dashboard-top-provider-card {
+  flex-shrink: 0 !important;
+}
+
+/* Connection card - grows to fill remaining rail space */
+.dashboard-page .dashboard-connection-card {
+  flex: 1 !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.dashboard-page .dashboard-connection-card .dashboard-card-scroll {
+  flex: 1 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-y: auto !important;
+}
+
+.dashboard-page .dashboard-side-card {
+  padding: 10px 14px !important;
+  margin-bottom: 0 !important;
+  min-height: 0 !important;
+}
+
+.dashboard-page .dashboard-side-head {
+  margin-bottom: 6px !important;
+}
+
+.dashboard-page .dashboard-side-head h3 {
+  font-size: 13px !important;
+}
+
+.dashboard-page .dashboard-side-head span {
+  font-size: 11px !important;
+}
+
+/* Provider token card inner */
+.dashboard-page .dashboard-provider-token-item {
+  padding: 8px 10px !important;
+  margin-bottom: 0 !important;
+}
+
+.dashboard-page .dashboard-provider-token-total {
+  font-size: 14px !important;
+  margin-bottom: 0 !important;
+}
+
+.dashboard-page .dashboard-provider-token-title {
+  margin-bottom: 4px !important;
+}
+
+/* Connection items */
+.dashboard-page .connection-status-item {
+  padding: 6px 10px !important;
+  margin-bottom: 4px !important;
+}
+
+.dashboard-page .connection-status-top strong {
+  font-size: 12px !important;
+}
+
+.dashboard-page .connection-status-url {
+  font-size: 11px !important;
+}
+
+.dashboard-page .connection-status-latency {
+  font-size: 11px !important;
+}
+
+/* Model view compact */
+.dashboard-page .dashboard-model-view {
+  min-height: 0 !important;
+  gap: 8px !important;
+  padding-top: 6px !important;
+}
+
+.dashboard-page .dashboard-model-bars {
+  gap: 8px !important;
+}
+
+.dashboard-page .dashboard-model-bar {
+  height: 18px !important;
+}
+
+.dashboard-page .dashboard-model-row strong {
+  font-size: 12px !important;
+}
+
+.dashboard-page .dashboard-model-row em {
+  font-size: 12px !important;
+}
 

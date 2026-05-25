@@ -261,6 +261,86 @@ test("HTTP API manages vault, providers, proxy usage, and billing sync", async (
   }
 });
 
+test("proxy records upstream non-2xx error bodies and fills missing failure model", async () => {
+  const upstream = http.createServer((req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: {
+          message: "jmr request rejected because the account is not enabled",
+          type: "invalid_request_error",
+          code: "account_not_enabled"
+        },
+        model: "jmr"
+      }));
+    });
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-upstream-error-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+
+  try {
+    store.setup("test-password-123");
+    const added = store.addKeyWithAutoMerge({
+      providerName: "JMR",
+      keyName: "jmr-key",
+      protocol: "openai-compatible",
+      baseUrl: `http://127.0.0.1:${upstreamPort}/v1`,
+      currency: "USD",
+      apiKey: "sk-jmr",
+      balanceConfig: { enabled: false }
+    });
+    const token = store.createProxyToken({
+      name: "jmr token",
+      allowedProviderIds: [added.provider.id],
+      allowedModels: [{
+        publicModel: "public-jmr",
+        providerId: added.provider.id,
+        apiKeyId: added.apiKey.id,
+        upstreamModel: "jmr"
+      }],
+      allowStreaming: false,
+      requestsPerMinute: 10,
+      requestsPerDay: 100
+    });
+
+    const globalResponse = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/openai/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer sk-jmr" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] })
+    });
+    assert.equal(globalResponse.status, 400);
+    assert.equal((await globalResponse.json()).error.message, "jmr request rejected because the account is not enabled");
+
+    const publicResponse = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token.secret}` },
+      body: JSON.stringify({ model: "public-jmr", messages: [{ role: "user", content: "hi" }] })
+    });
+    assert.equal(publicResponse.status, 400);
+
+    const state = store.getState();
+    assert.equal(state.usageEvents.length, 2);
+    for (const event of state.usageEvents) {
+      assert.equal(event.status, 400);
+      assert.equal(event.ok, false);
+      assert.equal(event.model, "jmr");
+      assert.match(event.error, /account_not_enabled/);
+      assert.match(event.error, /jmr request rejected/);
+      assert.equal(event.errorMessage, event.error);
+    }
+  } finally {
+    proxy.stop();
+    await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("HTTP API returns specific status codes for invalid inputs", async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-errors-"));
   const store = new VaultStore(path.join(tempDir, "vault.json"));

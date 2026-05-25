@@ -2,7 +2,7 @@ import type { IncomingMessage } from "node:http";
 
 export const DEFAULT_BODY_LIMIT_BYTES = 5_000_000;
 export const JSON_BODY_LIMIT_BYTES = 2_000_000;
-export const DEFAULT_PROXY_TIMEOUT_MS = 30_000;
+export const DEFAULT_PROXY_TIMEOUT_MS = 300_000;
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -56,4 +56,18 @@ export function isHopByHopHeader(name: string): boolean {
 export function proxyTimeoutMs(): number {
   const value = Number(process.env.API_VAULT_PROXY_TIMEOUT_MS || DEFAULT_PROXY_TIMEOUT_MS);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_PROXY_TIMEOUT_MS;
+}
+
+export function isTimeoutError(error: unknown): boolean {
+  const name = (error as Error)?.name;
+  return name === "AbortError" || name === "TimeoutError";
+}
+
+export function proxyTimeoutMessage(timeoutMs = proxyTimeoutMs()): string {
+  return `Proxy timeout after ${formatDuration(timeoutMs)}`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms % 1000 === 0) return `${ms / 1000}s`;
+  return `${ms}ms`;
 }

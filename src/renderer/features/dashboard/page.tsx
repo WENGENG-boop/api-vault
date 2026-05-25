@@ -70,38 +70,31 @@ export function Dashboard({ state, onNavigate }: { state: AppState; onNavigate: 
         actions={<StatusPill tone={state.cloudflared.running ? "ok" : "neutral"}>{state.cloudflared.running ? "Tunnel active" : "Tunnel off"}</StatusPill>}
       />
 
-      <section className="dashboard-action-center" aria-label="Recommended actions">
-        <div className="dashboard-action-head">
-          <div>
-            <h3>Action Center</h3>
-            <p>{actions.length ? "Resolve these items to make the gateway ready for real traffic." : "The core setup is ready. Watch usage and provider health from here."}</p>
+      {actions.length > 0 && (
+        <section className="dashboard-action-center" aria-label="Recommended actions">
+          <div className="dashboard-action-head">
+            <div>
+              <h3>Action Center</h3>
+              <p>Resolve these items to make the gateway ready for real traffic.</p>
+            </div>
+            <span>{actions.length} open</span>
           </div>
-          <span>{actions.length} open</span>
-        </div>
-        <div className="dashboard-action-grid">
-          {actions.length ? actions.map((action) => (
-            <article key={action.id} className={`dashboard-action-card dashboard-action-card--${action.tone}`}>
-              <div>
-                <StatusPill tone={action.tone}>{action.badge}</StatusPill>
-                <h4>{action.title}</h4>
-                <p>{action.description}</p>
-              </div>
-              <Button variant={action.tone === "fail" ? "danger" : "secondary"} onClick={() => onNavigate(action.tab)}>
-                {action.cta}
-              </Button>
-            </article>
-          )) : (
-            <article className="dashboard-action-card dashboard-action-card--ok">
-              <div>
-                <StatusPill tone="ok">Ready</StatusPill>
-                <h4>Gateway baseline is configured</h4>
-                <p>Providers, proxy tokens, and model mappings are present. Review recent usage when calls start flowing.</p>
-              </div>
-              <Button onClick={() => onNavigate("usage")}>Open usage log</Button>
-            </article>
-          )}
-        </div>
-      </section>
+          <div className="dashboard-action-grid">
+            {actions.map((action) => (
+              <article key={action.id} className={`dashboard-action-card dashboard-action-card--${action.tone}`}>
+                <div>
+                  <StatusPill tone={action.tone}>{action.badge}</StatusPill>
+                  <h4>{action.title}</h4>
+                  <p>{action.description}</p>
+                </div>
+                <Button variant={action.tone === "fail" ? "danger" : "secondary"} onClick={() => onNavigate(action.tab)}>
+                  {action.cta}
+                </Button>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="dashboard-workspace">
         <section className="dashboard-panel dashboard-main-panel">
@@ -233,25 +226,23 @@ function DashboardHeatmap({ days }: { days: HeatmapDay[] }) {
   const cols = count <= 1 ? 1 : 7;
   const showLabels = count <= 7;
   if (count === 0 || (count === 1 && max === 0)) {
-    return <div className="dashboard-heatmap-wrap"><p className="empty" style={{ padding: "12px 0" }}>No usage data yet</p></div>;
+    return <p className="empty" style={{ padding: "12px 0" }}>No usage data yet</p>;
   }
   return (
-    <div className="dashboard-heatmap-wrap">
-      <div className="dashboard-heatmap" aria-label="Token activity by day" style={{ gridTemplateColumns: `repeat(${cols}, ${cellSize}px)` }}>
-        {days.map((day) => {
-          const level = max <= 0 || day.tokens <= 0 ? 0 : Math.max(1, Math.ceil((day.tokens / max) * 4));
-          return (
-            <div key={day.key} className="dashboard-heat-wrapper">
-              <span
-                className={`dashboard-heat-cell level-${level}`}
-                style={{ width: cellSize, height: cellSize }}
-                title={`${day.label}: ${compactNumber(day.tokens)} tokens`}
-              />
-              {showLabels && <span className="dashboard-heat-label">{day.label}</span>}
-            </div>
-          );
-        })}
-      </div>
+    <div className="dashboard-heatmap" aria-label="Token activity by day" style={{ gridTemplateColumns: `repeat(${cols}, ${cellSize}px)` }}>
+      {days.map((day) => {
+        const level = max <= 0 || day.tokens <= 0 ? 0 : Math.max(1, Math.ceil((day.tokens / max) * 4));
+        return (
+          <div key={day.key} className="dashboard-heat-wrapper">
+            <span
+              className={`dashboard-heat-cell level-${level}`}
+              style={{ width: cellSize, height: cellSize }}
+              title={`${day.label}: ${compactNumber(day.tokens)} tokens`}
+            />
+            {showLabels && <span className="dashboard-heat-label">{day.label}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -264,6 +255,7 @@ function ProviderConnectionStatus({ providers, localServices, cloudflared }: {
   cloudflared: CloudflaredStatus;
 }) {
   const [tests, setTests] = useState<Record<string, { ok?: boolean; latencyMs?: number; status?: number; checkedAt?: string; error?: string; testing?: boolean }>>({});
+  const [showAll, setShowAll] = useState(false);
 
   const items = useMemo(() => {
     const result: Array<{ id: string; name: string; baseUrl: string; type: "provider" | "local"; status?: string; latencyMs?: number; lastCheckedAt?: string }> = [];
@@ -291,9 +283,11 @@ function ProviderConnectionStatus({ providers, localServices, cloudflared }: {
     return <p className="empty">No providers or local services yet.</p>;
   }
 
+  const displayedItems = showAll ? items : items.slice(0, 3);
+
   return (
     <div className="connection-status-list">
-      {items.map((item) => {
+      {displayedItems.map((item) => {
         const key = `${item.type}:${item.id}`;
         const test = tests[key];
         const ok = test?.ok ?? (item.status === "available" ? true : item.status === "unavailable" ? false : undefined);
@@ -327,6 +321,16 @@ function ProviderConnectionStatus({ providers, localServices, cloudflared }: {
           </div>
         );
       })}
+      {items.length > 3 && (
+        <button
+          type="button"
+          className="btn-secondary"
+          style={{ width: "100%", marginTop: "4px", padding: "6px 12px", fontSize: "12px", height: "auto", display: "block" }}
+          onClick={() => setShowAll(!showAll)}
+        >
+          {showAll ? "Show Top 3 Only" : `Show All (${items.length})`}
+        </button>
+      )}
     </div>
   );
 }
@@ -523,7 +527,9 @@ function buildDashboardActions(state: AppState): DashboardAction[] {
   const hasProviders = state.providers.length > 0;
   const hasProxyTokens = state.proxyTokens.length > 0;
   const hasModelMappings = state.proxyTokens.some((token) => token.allowedModels.length > 0);
-  const failedEvents = state.usageEvents.filter((event) => !event.ok).length;
+  const failedUsageEvents = state.usageEvents.filter((event) => !event.ok);
+  const failedEvents = failedUsageEvents.length;
+  const latestFailure = failedUsageEvents[0];
   const hasLocalServices = state.localServices.length > 0;
 
   if (!hasProviders) {
@@ -563,10 +569,12 @@ function buildDashboardActions(state: AppState): DashboardAction[] {
   }
 
   if (failedEvents > 0) {
+    const failureModel = latestFailure?.model ?? latestFailure?.modelId ?? "unknown model";
+    const failureError = latestFailure ? shortLabel(usageErrorText(latestFailure) || "No upstream error text recorded", 120) : "";
     actions.push({
       id: "failed-usage",
       title: "Review Failed Requests",
-      description: `${failedEvents} usage event${failedEvents === 1 ? "" : "s"} failed. Inspect status, upstream URL, latency, and error details.`,
+      description: `${failedEvents} usage event${failedEvents === 1 ? "" : "s"} failed. Latest: ${latestFailure?.status ?? "?"} on ${failureModel}. ${failureError}`,
       badge: "Failure",
       cta: "Open usage",
       tab: "usage",
@@ -587,6 +595,10 @@ function buildDashboardActions(state: AppState): DashboardAction[] {
   }
 
   return actions;
+}
+
+function usageErrorText(event: UsageEvent): string {
+  return event.error ?? event.errorMessage ?? "";
 }
 
 

@@ -3,11 +3,13 @@ import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import type { ApiProtocol, GatewayType, UsageEvent } from "../shared/types";
 import { buildProviderProxyBaseUrl, type ProviderForProxy, type VaultStore } from "./store";
-import { extractRequestModel, extractUsageFromResponse, extractUsageFromSSE } from "./usage";
+import { extractRequestModel, extractResponseModel, extractUsageFromResponse, extractUsageFromSSE, formatUpstreamErrorBody } from "./usage";
 import { badRequest, toAppError } from "./errors";
 import {
   DEFAULT_BODY_LIMIT_BYTES,
+  isTimeoutError,
   isHopByHopHeader,
+  proxyTimeoutMessage,
   proxyTimeoutMs,
   readRequestBody,
   shouldSendBody,
@@ -203,6 +205,7 @@ export class ProxyServer {
               sseBuffer,
               provider.balanceConfig.responseCostPath
             );
+            const upstreamError = upstream.ok ? undefined : formatUpstreamErrorBody(sseBuffer);
             safeAppendUsage(this.store, {
               ...baseUsageEvent({
                 provider,
@@ -214,14 +217,16 @@ export class ProxyServer {
                 startedAt,
                 started,
                 protocol: effectiveProtocol,
-                model: usage.model ?? requestModel
+                model: usage.model ?? extractResponseModel(sseBuffer) ?? requestModel
               }),
               inputTokens: usage.inputTokens,
               outputTokens: usage.outputTokens,
               cachedInputTokens: usage.cachedInputTokens,
               totalTokens: usage.totalTokens,
               realCost: usage.realCost,
-              currency: usage.currency
+              currency: usage.currency,
+              error: upstreamError,
+              errorMessage: upstreamError
             });
           } catch (error) {
             console.error("Failed to record streaming usage", error);
@@ -276,6 +281,7 @@ export class ProxyServer {
         responseBody,
         provider.balanceConfig.responseCostPath
       );
+      const upstreamError = upstream.ok ? undefined : formatUpstreamErrorBody(responseBody);
       safeAppendUsage(this.store, {
         ...baseUsageEvent({
           provider,
@@ -287,19 +293,24 @@ export class ProxyServer {
           startedAt,
           started,
           protocol: effectiveProtocol,
-          model: usage.model ?? requestModel
+          model: usage.model ?? extractResponseModel(responseBody) ?? requestModel
         }),
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         cachedInputTokens: usage.cachedInputTokens,
         totalTokens: usage.totalTokens,
         realCost: usage.realCost,
-        currency: usage.currency
+        currency: usage.currency,
+        error: upstreamError,
+        errorMessage: upstreamError
       });
     } catch (error) {
-      const message = String((error as Error).message ?? error);
+      const timedOut = isTimeoutError(error);
+      const message = timedOut ? proxyTimeoutMessage() : String((error as Error).message ?? error);
+      const status = timedOut ? 504 : 502;
+      const code = timedOut ? "proxy_timeout" : "upstream_error";
       if (!res.headersSent) {
-        writeJson(res, 502, { error: message, code: "upstream_error" });
+        writeJson(res, status, { error: message, code });
       } else {
         res.end();
       }
@@ -310,13 +321,14 @@ export class ProxyServer {
           gatewayBaseUrl,
           req,
           path: normalizedSuffixPath,
-          status: 502,
+          status,
           startedAt,
           started,
           protocol: effectiveProtocol,
           model: requestModel
         }),
-        error: message
+        error: message,
+        errorMessage: message
       });
     }
   }
@@ -441,9 +453,11 @@ export class ProxyServer {
         stream.on("end", () => {
           res.end();
           try {
-            const usage = extractUsageFromSSE(protocol, finalBody, Buffer.concat(sseChunks), provider!.balanceConfig.responseCostPath);
+            const sseBuffer = Buffer.concat(sseChunks);
+            const usage = extractUsageFromSSE(protocol, finalBody, sseBuffer, provider!.balanceConfig.responseCostPath);
+            const upstreamError = upstream.ok ? undefined : formatUpstreamErrorBody(sseBuffer);
             safeAppendUsage(this.store, {
-              ...baseUsageEvent({ provider: provider!, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(publicPort ?? this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? upstreamModel ?? requestModel }),
+              ...baseUsageEvent({ provider: provider!, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(publicPort ?? this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? extractResponseModel(sseBuffer) ?? upstreamModel ?? requestModel }),
               proxyTokenId,
               proxyTokenName,
               modelId: upstreamModel,
@@ -454,7 +468,9 @@ export class ProxyServer {
               totalTokens: usage.totalTokens,
               realCost: usage.realCost,
               estimatedCost: usage.realCost,
-              currency: usage.currency
+              currency: usage.currency,
+              error: upstreamError,
+              errorMessage: upstreamError
             });
           } catch (error) {
             recordPublicProxyError(this.store, provider!, req, startedAt, started, protocol, normalizedSuffixPath, upstream.status, endpoint, proxyTokenId, proxyTokenName, upstreamModel ?? requestModel, error);
@@ -475,8 +491,9 @@ export class ProxyServer {
       res.writeHead(upstream.status, responseHeaders);
       res.end(responseBody);
       const usage = extractUsageFromResponse(protocol, finalBody, rawResponseBody, provider.balanceConfig.responseCostPath);
+      const upstreamError = upstream.ok ? undefined : formatUpstreamErrorBody(rawResponseBody);
       safeAppendUsage(this.store, {
-        ...baseUsageEvent({ provider, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(publicPort ?? this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? upstreamModel ?? requestModel }),
+        ...baseUsageEvent({ provider, gatewayType: "public-proxy", gatewayBaseUrl: publicProxyBaseUrl(publicPort ?? this.port), req, path: normalizedSuffixPath, status: upstream.status, startedAt, started, protocol, model: usage.model ?? extractResponseModel(rawResponseBody) ?? upstreamModel ?? requestModel }),
         proxyTokenId,
         proxyTokenName,
         modelId: upstreamModel,
@@ -487,7 +504,9 @@ export class ProxyServer {
         totalTokens: usage.totalTokens,
         realCost: usage.realCost,
         estimatedCost: usage.realCost,
-        currency: usage.currency
+        currency: usage.currency,
+        error: upstreamError,
+        errorMessage: upstreamError
       });
     } catch (error) {
       const appError = sanitizeProxyError(error);
@@ -616,6 +635,9 @@ function writeJson(res: ServerResponse, status: number, data: unknown): void {
 }
 
 function sanitizeProxyError(error: unknown): { status: number; code: string; message: string } {
+  if (isTimeoutError(error)) {
+    return { status: 504, code: "proxy_timeout", message: proxyTimeoutMessage() };
+  }
   const appError = toAppError(error);
   if (appError.statusCode >= 500) {
     return { status: 502, code: "upstream_error", message: "Upstream request failed" };

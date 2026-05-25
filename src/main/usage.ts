@@ -25,6 +25,23 @@ export function extractRequestModel(requestBody: Buffer): string | undefined {
   return findModelString(parsed);
 }
 
+export function extractResponseModel(responseBody: Buffer): string | undefined {
+  const parsed = parseJsonBuffer(responseBody);
+  return findModelString(parsed);
+}
+
+export function formatUpstreamErrorBody(responseBody: Buffer): string | undefined {
+  if (responseBody.length === 0) return undefined;
+  const text = responseBody.toString("utf8");
+  const parsed = parseJsonBuffer(responseBody);
+  if (!parsed || typeof parsed !== "object") return text;
+  try {
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return text;
+  }
+}
+
 export function extractUsageFromResponse(
   protocol: ApiProtocol,
   requestBody: Buffer,

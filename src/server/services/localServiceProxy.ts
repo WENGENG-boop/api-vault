@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import type { UsageEvent } from "../../shared/types";
 import {
   readRequestBody,
+  isTimeoutError,
+  proxyTimeoutMessage,
+  proxyTimeoutMs,
   shouldSendBody,
   toArrayBuffer,
   toResponseHeaders
@@ -54,7 +57,7 @@ export async function handleLocalServiceProxy(
       method: req.method ?? "GET",
       headers: upstreamHeaders,
       body: shouldSendBody(req.method) && body.length > 0 ? toArrayBuffer(body) : undefined,
-      signal: AbortSignal.timeout(30000)
+      signal: AbortSignal.timeout(proxyTimeoutMs())
     });
 
     const latencyMs = Date.now() - startMs;
@@ -92,6 +95,9 @@ export async function handleLocalServiceProxy(
     store.appendUsage(event);
   } catch (error) {
     const latencyMs = Date.now() - startMs;
+    const timedOut = isTimeoutError(error);
+    const message = timedOut ? proxyTimeoutMessage() : (error as Error).message;
+    const status = timedOut ? 504 : 502;
     const event: UsageEvent = {
       id: randomUUID(),
       providerId: serviceId,
@@ -102,17 +108,20 @@ export async function handleLocalServiceProxy(
       path: normalizedSuffixPath,
       endpoint: `/api/proxy/local/${serviceId}${normalizedSuffixPath}`,
       method: req.method ?? "GET",
-      status: 0,
+      status,
       ok: false,
       startedAt,
       latencyMs,
-      error: (error as Error).message,
-      errorMessage: (error as Error).message
+      error: message,
+      errorMessage: message
     };
     store.appendUsage(event);
     if (!res.headersSent) {
-      res.writeHead(502, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: `Local service proxy error: ${(error as Error).message}` }));
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        error: timedOut ? message : `Local service proxy error: ${message}`,
+        code: timedOut ? "proxy_timeout" : "upstream_error"
+      }));
     }
   }
 }
