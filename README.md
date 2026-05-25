@@ -2,12 +2,6 @@
 
 [中文说明](README.zh-CN.md)
 
-
-
-https://github.com/user-attachments/assets/3bce32b9-74d8-43a9-a4fe-d0fdb133f988
-
-
-
 A self-hosted API key management dashboard with built-in reverse proxy, usage tracking, and balance sync. Manage multiple AI providers and API keys from one local interface.
 
 ## Why
@@ -63,7 +57,7 @@ API Vault injects the real key, forwards the request, records the result, and re
 
 ## Quick Start
 
-### Docker
+### Docker (recommended)
 
 ```bash
 docker compose up -d --build
@@ -71,7 +65,7 @@ docker compose up -d --build
 
 Open http://localhost:3210
 
-### Windows (recommended)
+### Windows
 
 Double-click `start-api-vault.bat` (requires [Node.js LTS](https://nodejs.org/))
 

@@ -57,7 +57,7 @@ API Vault 会注入真实 Key、转发请求、记录结果、返回响应。
 
 ## 快速开始
 
-### Docker
+### Docker（推荐）
 
 ```bash
 docker compose up -d --build
@@ -65,7 +65,7 @@ docker compose up -d --build
 
 打开 http://localhost:3210
 
-### Windows（推荐）
+### Windows
 
 双击 `start-api-vault.bat`（需要先安装 [Node.js LTS](https://nodejs.org/)）
 

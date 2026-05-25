@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-main/
+.api-vault/
+.claude/
+*.log
+npm-debug.log*
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
