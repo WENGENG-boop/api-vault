@@ -151,48 +151,69 @@ body,
   border-radius: 3px 3px 0 0 !important;
 }
 
-/* Top Bar Tools */
-.top-tools {
+/* Sidebar Status & Control at the bottom */
+.sidebar-status {
+  margin: 0 12px !important;
+  width: calc(100% - 24px) !important;
+  border-top: 1px solid var(--border) !important;
+  padding-top: 16px !important;
+  padding-bottom: 8px !important;
   display: flex !important;
-  align-items: center !important;
+  flex-direction: column !important;
   gap: 12px !important;
+  margin-top: auto !important; /* Ensure it stays at the very bottom */
 }
 
-.top-status-badge {
+.sidebar-status-badges {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.sidebar-status-badge {
   font-size: 11.5px !important;
   font-weight: 500 !important;
   font-family: monospace !important;
   border-radius: 4px !important;
-  padding: 4px 8px !important;
+  padding: 6px 10px !important;
   border: 1px solid var(--border) !important;
   background: #f8f9fa !important;
   color: var(--text-secondary) !important;
+  text-align: center !important;
+  text-overflow: ellipsis !important;
+  overflow: hidden !important;
+  white-space: nowrap !important;
 }
 
-.top-status-badge.tunnel-active {
+.sidebar-status-badge.tunnel-active {
   background: var(--success-bg) !important;
   border-color: rgba(30, 142, 62, 0.2) !important;
   color: var(--success) !important;
 }
 
-.top-status-badge.tunnel-off {
+.sidebar-status-badge.tunnel-off {
   background: var(--danger-bg) !important;
   border-color: rgba(217, 48, 37, 0.2) !important;
   color: var(--danger) !important;
 }
 
-.top-tools .lock-btn {
-  margin: 0 !important;
+.sidebar-lock-btn {
+  width: 100% !important;
   padding: 8px 16px !important;
   border-radius: 4px !important;
   font-size: 13px !important;
+  font-weight: 500 !important;
+  background: #ffffff !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s !important;
 }
 
-.top-tools .legacy-btn {
-  margin: 0 !important;
-  padding: 8px 16px !important;
-  border-radius: 4px !important;
-  font-size: 13px !important;
+.sidebar-lock-btn:hover {
+  background: #f8f9fa !important;
+  border-color: #bdc1c6 !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
 /* Sidebar: Flat clean Google style */
@@ -202,6 +223,44 @@ body,
   padding: 24px 0 !important;
   width: 240px !important;
   height: 100% !important;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow-x: hidden !important;
+}
+
+.sidebar.collapsed {
+  width: 72px !important;
+}
+
+.sidebar-toggle-wrap {
+  display: flex !important;
+  justify-content: flex-end !important;
+  padding: 0 12px 12px !important;
+}
+
+.sidebar.collapsed .sidebar-toggle-wrap {
+  justify-content: center !important;
+}
+
+.sidebar-toggle-btn {
+  width: 32px !important;
+  height: 32px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  color: var(--text-secondary) !important;
+  cursor: pointer !important;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s !important;
+}
+
+.sidebar-toggle-btn:hover,
+.sidebar-toggle-btn:focus-visible {
+  background: #f8f9fa !important;
+  border-color: #bdc1c6 !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
 /* Navigation items: M3 Pill capsule rounded active tab */
@@ -239,6 +298,89 @@ body,
   font-weight: 600 !important;
   border-left: none !important;
   box-shadow: none !important;
+}
+
+.sidebar.collapsed .nav-items {
+  align-items: center !important;
+}
+
+.sidebar.collapsed .nav-items button {
+  width: 44px !important;
+  height: 44px !important;
+  margin: 2px 0 !important;
+  padding: 0 !important;
+  justify-content: center !important;
+  gap: 0 !important;
+  border-radius: 50% !important;
+}
+
+.sidebar.collapsed .nav-items button span {
+  display: none !important;
+}
+
+.sidebar-lock-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+}
+
+.sidebar.collapsed .sidebar-status {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 16px 0 8px !important;
+  align-items: center !important;
+}
+
+.sidebar.collapsed .sidebar-status-badges {
+  align-items: center !important;
+}
+
+.collapsed-badges {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.sidebar-status-badge-collapsed {
+  width: 32px !important;
+  height: 32px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 50% !important;
+  background: #f8f9fa !important;
+  color: var(--text-secondary) !important;
+}
+
+.sidebar-status-badge-collapsed.proxy {
+  color: var(--primary) !important;
+  background: var(--primary-light) !important;
+  border-color: var(--primary-muted) !important;
+}
+
+.sidebar-status-badge-collapsed.tunnel-active {
+  background: var(--success-bg) !important;
+  border-color: rgba(30, 142, 62, 0.2) !important;
+  color: var(--success) !important;
+}
+
+.sidebar-status-badge-collapsed.tunnel-off {
+  background: var(--danger-bg) !important;
+  border-color: rgba(217, 48, 37, 0.2) !important;
+  color: var(--danger) !important;
+}
+
+.sidebar.collapsed .sidebar-lock-btn {
+  width: 40px !important;
+  height: 40px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+}
+
+.sidebar.collapsed .sidebar-lock-btn span {
+  display: none !important;
 }
 
 /* Recording indicators */
@@ -576,16 +718,34 @@ button.btn-danger:hover {
 }
 
 .latency-low {
-  color: #1e8e3e !important; /* Google green */
-  font-weight: 600 !important;
+  color: #1b5e20 !important; /* Rich Dark Green */
+  background: #e8f5e9 !important; /* Soft Green Background */
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  margin: 0 4px !important;
 }
 .latency-medium {
-  color: #b06000 !important; /* Google amber */
-  font-weight: 600 !important;
+  color: #e65100 !important; /* Rich Dark Orange */
+  background: #fff3e0 !important; /* Soft Orange Background */
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  margin: 0 4px !important;
 }
 .latency-high {
-  color: #d93025 !important; /* Google red */
-  font-weight: 600 !important;
+  color: #b71c1c !important; /* Rich Dark Red */
+  background: #ffe5e5 !important; /* Soft Red Background */
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+  display: inline-block !important;
+  vertical-align: middle !important;
+  margin: 0 4px !important;
 }
 
 /* Inputs & Form layout */
@@ -614,6 +774,9 @@ textarea:focus {
 
 /* Status Pill classes */
 .status-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  white-space: nowrap !important;
   font-weight: 600 !important;
   border-radius: 4px !important;
   padding: 3px 8px !important;
@@ -2067,3 +2230,41 @@ textarea:focus {
   font-size: 12px !important;
 }
 
+@media (max-width: 768px) {
+  .sidebar,
+  .sidebar.collapsed {
+    width: 100% !important;
+  }
+
+  .sidebar-toggle-wrap {
+    display: none !important;
+  }
+
+  .sidebar.collapsed .nav-items button {
+    width: auto !important;
+    height: auto !important;
+    margin: 2px 4px !important;
+    padding: 10px 14px !important;
+    gap: 8px !important;
+    border-radius: 20px !important;
+  }
+
+  .sidebar.collapsed .nav-items button span,
+  .sidebar.collapsed .sidebar-lock-btn span {
+    display: inline !important;
+  }
+
+  .sidebar.collapsed .sidebar-status {
+    width: auto !important;
+    margin: 0 0 0 auto !important;
+    padding: 0 !important;
+    border-top: none !important;
+  }
+
+  .sidebar.collapsed .sidebar-lock-btn {
+    width: auto !important;
+    height: auto !important;
+    padding: 8px 16px !important;
+    border-radius: 4px !important;
+  }
+}

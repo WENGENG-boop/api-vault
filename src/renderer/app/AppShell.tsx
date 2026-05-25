@@ -1,5 +1,5 @@
+import { useState, type ReactNode } from "react";
 import type { AppState } from "../../shared/types";
-import type { ReactNode } from "react";
 import type { AppTab } from "./types";
 
 type TabCategory = "gateway" | "access" | "analytics";
@@ -22,6 +22,16 @@ interface AppShellProps {
 
 export function AppShell({ state, tab, message, error, onTabChange, onLock, children }: AppShellProps) {
   const totalCalls = state.totals?.totalCalls ?? 0;
+
+  const [collapsed, setCollapsed] = useState(() => {
+    return localStorage.getItem("sidebar-collapsed") === "true";
+  });
+
+  const handleToggleCollapse = () => {
+    const nextValue = !collapsed;
+    setCollapsed(nextValue);
+    localStorage.setItem("sidebar-collapsed", String(nextValue));
+  };
 
   // Determine active category from current tab
   let activeCategory: TabCategory = "gateway";
@@ -66,36 +76,93 @@ export function AppShell({ state, tab, message, error, onTabChange, onLock, chil
           </button>
         </nav>
 
-        <div className="top-tools">
-          {state.proxyPort && <span className="top-status-badge">Proxy: 127.0.0.1:{state.proxyPort}</span>}
-          {state.cloudflared.running ? (
-            <span className="top-status-badge tunnel-active" title={state.cloudflared.publicUrl ?? ""}>Tunnel: Active</span>
-          ) : (
-            <span className="top-status-badge tunnel-off">Tunnel: Off</span>
-          )}
-          <button type="button" className="lock-btn" onClick={onLock}>Lock Vault</button>
-          <button
-            type="button"
-            className="legacy-btn"
-            onClick={() => {
-              localStorage.setItem("api_vault_ui_version", "legacy");
-              window.location.reload();
-            }}
-          >
-            💾 Legacy UI
-          </button>
-        </div>
       </header>
 
       <div className="main-container">
-        <nav className="sidebar">
+        <nav className={`sidebar ${collapsed ? "collapsed" : ""}`}>
+          <div className="sidebar-toggle-wrap">
+            <button
+              type="button"
+              className="sidebar-toggle-btn"
+              onClick={handleToggleCollapse}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-expanded={!collapsed}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {collapsed ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+              )}
+            </button>
+          </div>
+
           <div className="nav-items">
             {sidebarTabs.map((item) => (
-              <button key={item} className={tab === item ? "active" : ""} onClick={() => onTabChange(item)}>
+              <button 
+                key={item} 
+                className={tab === item ? "active" : ""} 
+                onClick={() => onTabChange(item)}
+                title={collapsed ? tabLabel(item) : undefined}
+              >
                 {tabIcon(item)}
                 <span>{tabLabel(item)}</span>
               </button>
             ))}
+          </div>
+          <div className="sidebar-status">
+            {collapsed ? (
+              <div className="sidebar-status-badges collapsed-badges">
+                {state.proxyPort && (
+                  <div className="sidebar-status-badge-collapsed proxy" title={`Proxy: 127.0.0.1:${state.proxyPort}`}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="2" width="20" height="8" rx="2" ry="2" />
+                      <rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
+                      <line x1="6" y1="6" x2="6.01" y2="6" />
+                      <line x1="6" y1="18" x2="6.01" y2="18" />
+                    </svg>
+                  </div>
+                )}
+                <div
+                  className={`sidebar-status-badge-collapsed tunnel ${state.cloudflared.running ? "tunnel-active" : "tunnel-off"}`}
+                  title={state.cloudflared.running ? `Tunnel: Active${state.cloudflared.publicUrl ? ` (${state.cloudflared.publicUrl})` : ""}` : "Tunnel: Off"}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.5 19A3.5 3.5 0 0 0 21 15.5c0-2.79-2.54-4.5-5-4.5-.47 0-.89.09-1.3.26A7 7 0 1 0 4 15.5A3.5 3.5 0 0 0 7.5 19z" />
+                  </svg>
+                </div>
+              </div>
+            ) : (
+              <div className="sidebar-status-badges">
+                {state.proxyPort && (
+                  <div className="sidebar-status-badge" title={`Proxy: 127.0.0.1:${state.proxyPort}`}>
+                    Proxy: 127.0.0.1:{state.proxyPort}
+                  </div>
+                )}
+                {state.cloudflared.running ? (
+                  <div className="sidebar-status-badge tunnel-active" title={state.cloudflared.publicUrl ?? ""}>
+                    Tunnel: Active
+                  </div>
+                ) : (
+                  <div className="sidebar-status-badge tunnel-off">
+                    Tunnel: Off
+                  </div>
+                )}
+              </div>
+            )}
+            <button type="button" className="sidebar-lock-btn" onClick={onLock} title={collapsed ? "Lock Vault" : undefined}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+              <span>Lock Vault</span>
+            </button>
           </div>
         </nav>
         <main className="content">

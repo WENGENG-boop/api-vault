@@ -1,9 +1,11 @@
 import { syncBalance } from "../../main/balance";
 import type { VaultStore } from "../../main/store";
+import { testUpstreamUrl } from "./upstreamProbeService";
 
 const lastSyncTimes = new Map<string, number>();
 
 export function startAutoSync(store: VaultStore): void {
+  // Balance auto-sync (every 60s)
   setInterval(() => {
     if (!store.status.unlocked) return;
     const state = store.getState();
@@ -21,4 +23,30 @@ export function startAutoSync(store: VaultStore): void {
       });
     }
   }, 60_000);
+
+  // Latency check (every 10s)
+  setInterval(() => {
+    if (!store.status.unlocked) return;
+    const state = store.getState();
+    for (const provider of state.providers) {
+      const apiKey = store.getProviderFirstApiKeyPlaintext(provider.id);
+      testUpstreamUrl(store, {
+        baseUrl: provider.baseUrl,
+        protocol: provider.protocol,
+        providerId: provider.id,
+        isLocal: provider.isLocal,
+        apiKey
+      }).then((result) => {
+        store.updateProviderConnectionStatus(
+          provider.id,
+          result.ok ? "available" : "unavailable",
+          result.latencyMs,
+          result.checkedAt
+        );
+      }).catch((err) => {
+        console.warn(`Background latency test failed for provider ${provider.name} (${provider.id}):`, err.message ?? err);
+      });
+    }
+  }, 10_000);
 }
+

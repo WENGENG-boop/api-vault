@@ -2,6 +2,8 @@
 @media (max-width: 768px) {
   .app { flex-direction: column; }
   .sidebar { width: 100%; flex-direction: row; align-items: center; padding: 10px; border-right: none; border-bottom: 1px solid var(--border); }
+  .sidebar.collapsed { width: 100%; }
+  .sidebar-toggle-wrap { display: none; }
   .brand { margin-bottom: 0; margin-right: 16px; }
   .nav-items { flex-direction: row; }
   .proxy-status { display: none; }
@@ -72,6 +74,9 @@
   min-height: 148px;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 .provider-card-compact:hover,
@@ -84,10 +89,25 @@
 
 .provider-summary-top {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+
+.provider-summary-top strong {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+}
+
+.provider-card-badges-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
 .provider-summary-name {

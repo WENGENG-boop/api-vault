@@ -16,5 +16,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src/renderer", "src/renderer-legacy", "src/shared", "vite.config.ts"]
+  "include": ["src/renderer", "src/shared", "vite.config.ts"]
 }

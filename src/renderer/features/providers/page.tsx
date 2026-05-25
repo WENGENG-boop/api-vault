@@ -16,6 +16,7 @@ interface ProviderKeyForm {
   apiKey: string;
   queryKey: string;
   balanceConfig: BalanceConfig;
+  isLocal?: boolean;
 }
 
 interface ProviderMetaForm {
@@ -24,6 +25,7 @@ interface ProviderMetaForm {
   baseUrl: string;
   currency: string;
   balanceConfig: BalanceConfig;
+  isLocal?: boolean;
 }
 
 export function Providers({ state, setState, showMsg, showErr }: {
@@ -77,11 +79,11 @@ export function Providers({ state, setState, showMsg, showErr }: {
   }
 
   function emptyForm(): ProviderKeyForm {
-    return { providerName: "", keyName: "", protocol: "openai-compatible", baseUrl: "", currency: "USD", apiKey: "", queryKey: "", balanceConfig: { ...defaultBalanceConfig } };
+    return { providerName: "", keyName: "", protocol: "openai-compatible", baseUrl: "", currency: "USD", apiKey: "", queryKey: "", balanceConfig: { ...defaultBalanceConfig }, isLocal: false };
   }
 
   function startEdit(p: ProviderSafe) {
-    setForm({ id: p.id, name: p.name, providerName: p.name, keyName: "", protocol: p.protocol, baseUrl: p.baseUrl, currency: p.currency, apiKey: "", queryKey: "", balanceConfig: { ...p.balanceConfig } });
+    setForm({ id: p.id, name: p.name, providerName: p.name, keyName: "", protocol: p.protocol, baseUrl: p.baseUrl, currency: p.currency, apiKey: "", queryKey: "", balanceConfig: { ...p.balanceConfig }, isLocal: p.isLocal });
     setEditId(p.id);
     setProviderEditId(undefined);
     setSelectedProviderId(undefined);
@@ -95,7 +97,8 @@ export function Providers({ state, setState, showMsg, showErr }: {
       protocol: p.protocol,
       baseUrl: p.baseUrl,
       currency: p.currency,
-      balanceConfig: { ...p.balanceConfig }
+      balanceConfig: { ...p.balanceConfig },
+      isLocal: p.isLocal
     });
   }
 
@@ -109,7 +112,8 @@ export function Providers({ state, setState, showMsg, showErr }: {
         protocol: providerEditForm.protocol ?? provider.protocol,
         baseUrl: providerEditForm.baseUrl ?? provider.baseUrl,
         currency: providerEditForm.currency ?? provider.currency,
-        balanceConfig: providerEditForm.balanceConfig ?? provider.balanceConfig
+        balanceConfig: providerEditForm.balanceConfig ?? provider.balanceConfig,
+        isLocal: providerEditForm.isLocal ?? provider.isLocal
       });
       setState(s);
       setProviderEditId(undefined);
@@ -129,7 +133,8 @@ export function Providers({ state, setState, showMsg, showErr }: {
         balanceConfig: form.balanceConfig,
         keyName: form.keyName || "default",
         apiKey: form.apiKey,
-        queryKey: form.queryKey
+        queryKey: form.queryKey,
+        isLocal: form.isLocal ?? false
       };
       const s = await apiClient.addKeyWithAutoMerge(payload);
       setState(s);
@@ -251,6 +256,10 @@ export function Providers({ state, setState, showMsg, showErr }: {
             <label>Currency<input value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} placeholder="USD" /></label>
             <label>API Key<input type="password" value={form.apiKey ?? ""} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={editId ? "(unchanged if empty)" : "sk-..."} /></label>
             <label>Query Key (optional)<input type="password" value={form.queryKey ?? ""} onChange={(e) => setForm({ ...form, queryKey: e.target.value })} placeholder="For billing API if different" /></label>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", gridColumn: "span 2" }}>
+              <input type="checkbox" checked={form.isLocal ?? false} onChange={(e) => setForm({ ...form, isLocal: e.target.checked })} />
+              Local Service (本地运行服务)
+            </label>
           </div>
           <details className="balance-config">
             <summary>Balance Sync Config</summary>
@@ -305,11 +314,7 @@ export function Providers({ state, setState, showMsg, showErr }: {
               }}
             >
               <div className="provider-summary-top">
-                <div className="provider-summary-name">
-                  <strong>{p.name}</strong>
-                  <span className="provider-protocol">{p.protocol}</span>
-                  <span className="provider-protocol">{p.apiKeys.length} keys</span>
-                </div>
+                <strong>{p.name}</strong>
                 <button
                   type="button"
                   className="provider-open-button"
@@ -318,10 +323,16 @@ export function Providers({ state, setState, showMsg, showErr }: {
                   Open
                 </button>
               </div>
+              <div className="provider-card-badges-row">
+                {p.isLocal && <span className="provider-protocol provider-local-badge">Local</span>}
+                <span className="provider-protocol">{p.protocol}</span>
+                <span className="provider-protocol">{p.apiKeys.length} keys</span>
+              </div>
               <div className="provider-url provider-summary-base">
                 <UrlTestIndicator test={providerTest} />
                 <span>{p.baseUrl}</span>
               </div>
+              <div style={{ flexGrow: 1 }} />
               <UrlTestStatusLine test={providerTest} />
               <div className="provider-stats provider-summary-stats">
                 <span>{providerStats.calls} calls</span>
@@ -354,6 +365,7 @@ export function Providers({ state, setState, showMsg, showErr }: {
                 <div>
                   <div className="provider-header">
                     <strong>{selectedProvider.name}</strong>
+                    {selectedProvider.isLocal && <span className="provider-protocol provider-local-badge">Local</span>}
                     <span className="provider-protocol">{selectedProvider.protocol}</span>
                     <span className="provider-protocol">{selectedProvider.apiKeys.length} keys</span>
                   </div>
@@ -402,6 +414,10 @@ export function Providers({ state, setState, showMsg, showErr }: {
                     </label>
                     <label>Currency
                       <input value={providerEditForm.currency ?? ""} onChange={(event) => setProviderEditForm({ ...providerEditForm, currency: event.target.value })} />
+                    </label>
+                    <label style={{ display: "flex", gap: 8, alignItems: "center", gridColumn: "span 2" }}>
+                      <input type="checkbox" checked={providerEditForm.isLocal ?? false} onChange={(event) => setProviderEditForm({ ...providerEditForm, isLocal: event.target.checked })} />
+                      Local Service (本地运行服务)
                     </label>
                   </div>
                   <div className="provider-actions provider-meta-actions">

@@ -50,7 +50,7 @@ interface ModelTokenShare {
 
 
 
-export function Dashboard({ state, onNavigate }: { state: AppState; onNavigate: (tab: AppTab) => void }) {
+export function Dashboard({ state, setState, onNavigate }: { state: AppState; setState: (s: AppState) => void; onNavigate: (tab: AppTab) => void }) {
   const [dashboardView, setDashboardView] = useState<DashboardView>("overview");
   const [dashboardRange, setDashboardRange] = useState<DashboardRange>("all");
   const rows = useMemo(() => dashboardRowsForRange(state.usageEvents, state.usageRollups ?? [], dashboardRange), [state.usageEvents, state.usageRollups, dashboardRange]);
@@ -141,6 +141,7 @@ export function Dashboard({ state, onNavigate }: { state: AppState; onNavigate: 
                 providers={state.providers}
                 localServices={state.localServices}
                 cloudflared={state.cloudflared}
+                setState={setState}
               />
             </div>
           </section>
@@ -249,10 +250,11 @@ function DashboardHeatmap({ days }: { days: HeatmapDay[] }) {
 
 
 
-function ProviderConnectionStatus({ providers, localServices, cloudflared }: {
+function ProviderConnectionStatus({ providers, localServices, cloudflared, setState }: {
   providers: ProviderSafe[];
   localServices: LocalService[];
   cloudflared: CloudflaredStatus;
+  setState: (s: AppState) => void;
 }) {
   const [tests, setTests] = useState<Record<string, { ok?: boolean; latencyMs?: number; status?: number; checkedAt?: string; error?: string; testing?: boolean }>>({});
   const [showAll, setShowAll] = useState(false);
@@ -274,6 +276,8 @@ function ProviderConnectionStatus({ providers, localServices, cloudflared }: {
         const result = await apiClient.testUrl({ baseUrl: item.baseUrl, providerId: item.id });
         setTests((prev) => ({ ...prev, [`${item.type}:${item.id}`]: { ...result, testing: false } }));
       }
+      const nextState = await apiClient.getState();
+      setState(nextState);
     } catch (e) {
       setTests((prev) => ({ ...prev, [`${item.type}:${item.id}`]: { ok: false, latencyMs: 0, error: e instanceof Error ? e.message : String(e), checkedAt: new Date().toISOString(), testing: false } }));
     }

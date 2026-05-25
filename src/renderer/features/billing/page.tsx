@@ -50,8 +50,9 @@ export function Billing({ state, setState, showMsg, showErr }: {
                 <button 
                   type="button"
                   className="btn-secondary"
-                  disabled={syncing === p.id} 
+                  disabled={syncing === p.id || !p.balanceConfig?.enabled} 
                   onClick={() => syncBalance(p.id)}
+                  title={!p.balanceConfig?.enabled ? "Balance sync is not configured/enabled for this provider" : undefined}
                 >
                   {syncing === p.id ? "Syncing..." : "Sync Balance"}
                 </button>
@@ -121,7 +122,11 @@ export function Billing({ state, setState, showMsg, showErr }: {
                 </div>
               ) : (
                 <div className="billing-content-area empty-billing">
-                  <p>No balance data has been fetched yet. Click "Sync Balance" to load billing data.</p>
+                  <p>
+                    {!p.balanceConfig?.enabled 
+                      ? "Balance sync is disabled for this provider. Enable it in Provider settings." 
+                      : 'No balance data has been fetched yet. Click "Sync Balance" to load billing data.'}
+                  </p>
                 </div>
               )}
 

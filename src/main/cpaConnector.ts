@@ -37,8 +37,10 @@ export async function testCpaConnection(input: CpaConnectorInput): Promise<Accou
   }
 
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const root = await probeStatus(rootUrl, input.apiKey, timeoutMs);
-  const models = await probeModels(modelsUrl, input.apiKey, timeoutMs);
+  const [root, models] = await Promise.all([
+    probeStatus(rootUrl, input.apiKey, timeoutMs),
+    probeModels(modelsUrl, input.apiKey, timeoutMs)
+  ]);
   const latencyMs = Date.now() - startMs;
   const status = models.status ?? root.status;
 

@@ -53,7 +53,7 @@ export default function App() {
 
   return (
     <AppShell state={safeState} tab={tab} message={message} error={error} onTabChange={setTab} onLock={lock}>
-      {tab === "dashboard" && <Dashboard state={safeState} onNavigate={setTab} />}
+      {tab === "dashboard" && <Dashboard state={safeState} setState={setState} onNavigate={setTab} />}
       {tab === "providers" && <Providers state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
       {tab === "status" && <StatusPage state={safeState} />}
       {tab === "models" && <ModelDirectory state={safeState} setState={setState} showMsg={showMsg} showErr={showErr} />}
