@@ -1313,15 +1313,79 @@
   }
 }
 
-/* --- Connection Latency Monitor (background probe, every 10s) --- */
-.latency-monitor-card {
-  cursor: default;
+/* --- Connection / Model Latency view --- */
+.latency-view {
   display: grid;
   gap: 14px;
 }
 
-.latency-monitor-header {
-  cursor: default;
+.latency-range-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.latency-range-pills {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface-2, rgba(148, 163, 184, 0.12));
+}
+
+.latency-range-pills button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  padding: 6px 14px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.latency-range-pills button:hover {
+  color: var(--text);
+}
+
+.latency-range-pills button.active {
+  background: var(--primary, #6366f1);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--primary-glow, rgba(99, 102, 241, 0.4));
+}
+
+.latency-day-select {
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface, #fff);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.latency-range-hint {
+  font-size: 12px;
+  color: var(--text-muted, #64748b);
+  margin-left: auto;
+}
+
+.latency-group-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+  margin-top: 6px;
+}
+
+.latency-group-title span {
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted, #64748b);
 }
 
 .latency-monitor-spark {
@@ -1332,55 +1396,89 @@
   padding: 0 12px;
 }
 
-.connection-sparkline {
-  width: 160px;
-  height: 36px;
-  overflow: visible;
-}
-
 .latency-monitor-metrics {
   gap: 18px;
 }
 
-.latency-monitor-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 28px;
-  padding: 12px 16px 2px;
-  border-top: 1px solid var(--border-subtle);
+.latency-curve {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
 }
 
-.lm-stat {
+.latency-curve.mini {
+  width: 160px;
+  height: 36px;
+}
+
+/* Drawer: curve + detail table */
+.latency-drawer {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr);
+  gap: 18px;
+  padding: 16px;
+}
+
+.latency-curve-box {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 64px;
+  gap: 8px;
 }
 
-.lm-stat span {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.latency-curve-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
   color: var(--text-muted, #64748b);
 }
 
-.lm-stat strong {
-  font-size: 14px;
+.latency-detail-table {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.ldt-row {
+  display: grid;
+  grid-template-columns: 1.6fr 0.8fr 0.8fr 0.8fr 0.5fr;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: var(--text);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.lm-stat--time {
-  margin-left: auto;
-  text-align: right;
+.ldt-row:last-child {
+  border-bottom: none;
 }
 
-@media (max-width: 720px) {
+.ldt-row.ldt-head {
+  position: sticky;
+  top: 0;
+  background: var(--surface-2, rgba(148, 163, 184, 0.12));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted, #64748b);
+}
+
+.ldt-empty {
+  padding: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted, #64748b);
+}
+
+@media (max-width: 860px) {
+  .latency-drawer {
+    grid-template-columns: 1fr;
+  }
   .latency-monitor-spark {
     display: none;
-  }
-  .lm-stat--time {
-    margin-left: 0;
-    text-align: left;
   }
 }

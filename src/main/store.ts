@@ -17,7 +17,7 @@ import type {
   BalanceSnapshot,
   CloudflaredStatus,
   CloudflaredConfig,
-  ConnectionSample,
+  LatencyHourBucket,
   DashboardTotals,
   LocalService,
   LocalServiceProtocol,
@@ -73,7 +73,7 @@ interface ProviderRecord {
   status?: LocalServiceStatus;
   latencyMs?: number;
   lastCheckedAt?: string;
-  connectionHistory?: ConnectionSample[];
+  latencyHourly?: LatencyHourBucket[];
 }
 
 interface ProxyTokenRecord {
@@ -227,8 +227,9 @@ class JsonFileStorageAdapter implements StorageAdapter {
 
 const RECENT_USAGE_LIMIT = 1000;
 const BALANCE_SNAPSHOT_LIMIT = 1000;
-// ~10 minutes of probe history at the 10s background interval.
-const CONNECTION_HISTORY_LIMIT = 60;
+// 7 days of hourly-averaged connection latency buckets.
+const LATENCY_HISTORY_HOURS = 7 * 24;
+const HOUR_MS = 60 * 60 * 1000;
 const USAGE_FLUSH_INTERVAL_MS = 5000;
 const USAGE_FLUSH_BATCH_SIZE = 50;
 
@@ -1156,13 +1157,28 @@ export class VaultStore {
     provider.status = status;
     if (latencyMs !== undefined) provider.latencyMs = latencyMs;
     if (checkedAt) provider.lastCheckedAt = checkedAt;
-    const history = provider.connectionHistory ?? [];
-    history.push({
-      at: checkedAt ?? new Date().toISOString(),
-      ok: status === "available",
-      latencyMs
-    });
-    provider.connectionHistory = history.slice(-CONNECTION_HISTORY_LIMIT);
+    const at = checkedAt ? new Date(checkedAt).getTime() : Date.now();
+    const ts = Number.isFinite(at) ? at : Date.now();
+    const hour = Math.floor(ts / HOUR_MS) * HOUR_MS;
+    const ok = status === "available";
+    const buckets = provider.latencyHourly ?? [];
+    let bucket = buckets.length > 0 && buckets[buckets.length - 1].hour === hour
+      ? buckets[buckets.length - 1]
+      : undefined;
+    if (!bucket) {
+      bucket = { hour, count: 0, sum: 0, min: 0, max: 0, ok: 0, total: 0 };
+      buckets.push(bucket);
+    }
+    bucket.total += 1;
+    if (ok) bucket.ok += 1;
+    if (ok && typeof latencyMs === "number" && Number.isFinite(latencyMs)) {
+      bucket.count += 1;
+      bucket.sum += latencyMs;
+      bucket.min = bucket.count === 1 ? latencyMs : Math.min(bucket.min, latencyMs);
+      bucket.max = Math.max(bucket.max, latencyMs);
+    }
+    const cutoff = hour - (LATENCY_HISTORY_HOURS - 1) * HOUR_MS;
+    provider.latencyHourly = buckets.filter((b) => b.hour >= cutoff);
     provider.updatedAt = new Date().toISOString();
     this.save();
   }
@@ -1341,7 +1357,7 @@ export class VaultStore {
       status: provider.status ?? "unknown",
       latencyMs: provider.latencyMs,
       lastCheckedAt: provider.lastCheckedAt,
-      connectionHistory: provider.connectionHistory ?? []
+      latencyHourly: provider.latencyHourly ?? []
     };
   }
 
@@ -1698,13 +1714,25 @@ function migrateProvider(raw: any): ProviderRecord {
     status: normalizeConnectionStatus(raw.status),
     latencyMs: typeof raw.latencyMs === "number" ? raw.latencyMs : undefined,
     lastCheckedAt: typeof raw.lastCheckedAt === "string" ? raw.lastCheckedAt : undefined,
-    connectionHistory: Array.isArray(raw.connectionHistory)
-      ? raw.connectionHistory
-          .filter((s: any) => s && typeof s.at === "string" && typeof s.ok === "boolean")
-          .map((s: any) => ({ at: s.at, ok: s.ok, latencyMs: typeof s.latencyMs === "number" ? s.latencyMs : undefined }))
-          .slice(-CONNECTION_HISTORY_LIMIT)
-      : undefined
+    latencyHourly: migrateLatencyHourly(raw.latencyHourly)
   };
+}
+
+function migrateLatencyHourly(raw: any): LatencyHourBucket[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const buckets = raw
+    .filter((b: any) => b && typeof b.hour === "number" && typeof b.count === "number")
+    .map((b: any) => ({
+      hour: b.hour,
+      count: Math.max(0, Number(b.count) || 0),
+      sum: Math.max(0, Number(b.sum) || 0),
+      min: Math.max(0, Number(b.min) || 0),
+      max: Math.max(0, Number(b.max) || 0),
+      ok: Math.max(0, Number(b.ok) || 0),
+      total: Math.max(0, Number(b.total) || 0)
+    }))
+    .sort((a: LatencyHourBucket, b: LatencyHourBucket) => a.hour - b.hour);
+  return buckets.slice(-LATENCY_HISTORY_HOURS);
 }
 
 function migrateLocalService(raw: any): LocalServiceRecord {

@@ -76,14 +76,23 @@ export interface ProviderSafe {
   status?: LocalServiceStatus;
   latencyMs?: number;
   lastCheckedAt?: string;
-  connectionHistory?: ConnectionSample[];
+  latencyHourly?: LatencyHourBucket[];
 }
 
-/** A single result from the background connection probe (runs every 10s per provider). */
-export interface ConnectionSample {
-  at: string;
-  ok: boolean;
-  latencyMs?: number;
+/**
+ * Hourly aggregation of latency samples. The background probe runs every ~10s
+ * per provider and is averaged into one bucket per hour; up to 7 days (168
+ * buckets) are retained. The same shape is reused on the client for per-model
+ * call latency derived from usage events.
+ */
+export interface LatencyHourBucket {
+  hour: number;   // epoch ms of the hour start
+  count: number;  // number of latency samples in the hour
+  sum: number;    // sum of latencies (ms) — average = sum / count
+  min: number;    // min latency (ms); 0 when count === 0
+  max: number;    // max latency (ms)
+  ok: number;     // successful probes/calls in the hour
+  total: number;  // total probes/calls in the hour
 }
 
 export interface UsageEvent {
