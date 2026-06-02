@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { AppState, UsageEvent } from "../../../shared/types";
+import type { AppState, ConnectionSample, ProviderSafe, UsageEvent } from "../../../shared/types";
 import {
   buildModelStatusSummaries,
   buildProviderStatusSummaries,
@@ -11,7 +11,7 @@ import {
 } from "../../../shared/statusStats";
 import { compactNumber, formatUsageDateTime } from "../../shared/utils";
 
-type ViewMode = "providers" | "models";
+type ViewMode = "providers" | "models" | "latency";
 type FilterStatus = "all" | "operational" | "degraded-outage" | "inactive";
 type SortBy = "name" | "calls" | "latency" | "success";
 type SuccessRateTone = "operational" | "degraded" | "outage";
@@ -129,6 +129,48 @@ function calculateTelemetry(
   };
 }
 
+interface ConnectionMonitor {
+  id: string;
+  name: string;
+  baseUrl: string;
+  status?: string;
+  checks: number;
+  okCount: number;
+  failCount: number;
+  uptime?: number;
+  lastLatencyMs?: number;
+  avgLatencyMs?: number;
+  minLatencyMs?: number;
+  maxLatencyMs?: number;
+  lastCheckedAt?: string;
+  samples: ConnectionSample[];
+}
+
+function buildConnectionMonitor(provider: ProviderSafe): ConnectionMonitor {
+  const samples = provider.connectionHistory ?? [];
+  const okSamples = samples.filter((s) => s.ok);
+  const latencies = okSamples
+    .map((s) => s.latencyMs)
+    .filter((l): l is number => typeof l === "number");
+  const last = samples.length > 0 ? samples[samples.length - 1] : undefined;
+  return {
+    id: provider.id,
+    name: provider.name,
+    baseUrl: provider.baseUrl,
+    status: provider.status,
+    checks: samples.length,
+    okCount: okSamples.length,
+    failCount: samples.length - okSamples.length,
+    uptime: samples.length > 0 ? okSamples.length / samples.length : undefined,
+    lastLatencyMs: last?.ok ? last.latencyMs : provider.latencyMs,
+    avgLatencyMs: latencies.length > 0 ? latencies.reduce((a, b) => a + b, 0) / latencies.length : undefined,
+    minLatencyMs: latencies.length > 0 ? Math.min(...latencies) : undefined,
+    maxLatencyMs: latencies.length > 0 ? Math.max(...latencies) : undefined,
+    lastCheckedAt: provider.lastCheckedAt ?? last?.at,
+    samples
+  };
+}
+
 export function StatusPage({ state }: { state: AppState }) {
   const [view, setView] = useState<ViewMode>("providers");
   const [expandedId, setExpandedId] = useState<string | undefined>();
@@ -187,6 +229,18 @@ export function StatusPage({ state }: { state: AppState }) {
     () => buildModelStatusSummaries(state.usageEvents, state.usageRollups ?? [], state.modelCatalog ?? [], nowMs),
     [state.usageEvents, state.usageRollups, state.modelCatalog, nowMs]
   );
+
+  // Connection-latency monitors are derived from the background probe history
+  // (every 10s per provider), kept separate from model/usage success metrics.
+  const connectionMonitors = useMemo(
+    () => state.providers.map((p) => buildConnectionMonitor(p)).sort((a, b) => a.name.localeCompare(b.name)),
+    [state.providers]
+  );
+  const filteredMonitors = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return connectionMonitors;
+    return connectionMonitors.filter((m) => m.name.toLowerCase().includes(q) || m.baseUrl.toLowerCase().includes(q));
+  }, [connectionMonitors, search]);
 
   const globalLevel = resolveGlobalLevel(providerSummaries);
   const outageCount = providerSummaries.filter((p) => p.level === "outage").length;
@@ -365,6 +419,15 @@ export function StatusPage({ state }: { state: AppState }) {
             >
               Models
             </button>
+            <button
+              className={view === "latency" ? "active" : ""}
+              onClick={() => {
+                setView("latency");
+                setExpandedId(undefined);
+              }}
+            >
+              Connection Latency
+            </button>
           </div>
 
           <div className="status-search-box">
@@ -374,14 +437,14 @@ export function StatusPage({ state }: { state: AppState }) {
             </svg>
             <input
               type="text"
-              placeholder={view === "providers" ? "Search provider name or endpoint..." : "Search model catalog..."}
+              placeholder={view === "models" ? "Search model catalog..." : "Search provider name or endpoint..."}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="control-right">
+        <div className="control-right" style={view === "latency" ? { display: "none" } : undefined}>
           <div className="filter-group">
             <label>Health:</label>
             <div className="status-filter-pills">
@@ -437,7 +500,7 @@ export function StatusPage({ state }: { state: AppState }) {
             <EmptyStatus message="No providers match the selected criteria." />
           )}
         </div>
-      ) : (
+      ) : view === "models" ? (
         <div className="status-cards-list">
           {filteredModels.map((m) => {
             const modelEvents = eventsByModel.get(m.modelName) ?? [];
@@ -458,10 +521,23 @@ export function StatusPage({ state }: { state: AppState }) {
             <EmptyStatus message="No models match the selected criteria." />
           )}
         </div>
+      ) : (
+        <div className="status-cards-list">
+          {filteredMonitors.map((m) => (
+            <ConnectionLatencyCard key={m.id} monitor={m} />
+          ))}
+          {filteredMonitors.length === 0 && (
+            <EmptyStatus message="No providers to monitor yet. Connection latency is sampled automatically every 10 seconds." />
+          )}
+        </div>
       )}
 
       <div className="status-footer-bar">
-        <span>Showing telemetry & tests across the last 7 days. Metric collections sync automatically with gateway traffic.</span>
+        <span>
+          {view === "latency"
+            ? "Connection latency is probed automatically every 10 seconds per provider. Showing the most recent samples."
+            : "Showing telemetry & tests across the last 7 days. Metric collections sync automatically with gateway traffic."}
+        </span>
       </div>
     </div>
   );
@@ -1139,6 +1215,103 @@ function RecentCallsTraceTable({ calls, hideHeader = false }: { calls: UsageEven
         </table>
       </div>
     </div>
+  );
+}
+
+function ConnectionLatencyCard({ monitor }: { monitor: ConnectionMonitor }) {
+  const tone = monitor.status === "available" ? "operational" : monitor.status === "unavailable" ? "outage" : "no-traffic";
+  return (
+    <div className={`status-item-card latency-monitor-card status-item-card--${tone}`}>
+      <div className="status-item-header-wrap latency-monitor-header">
+        <div className="status-item-left-sec">
+          <div className="status-dot-pulse">
+            <span className={`dot dot--${tone}`} />
+            {tone === "operational" && <span className={`ring ring--${tone}`} />}
+          </div>
+          <div className="status-item-identity">
+            <div className="identity-top">
+              <h3>{monitor.name}</h3>
+              <span className={`status-badge-inline badge--${tone}`}>{fmtConnection(monitor.status)}</span>
+            </div>
+            <code>{monitor.baseUrl}</code>
+          </div>
+        </div>
+
+        <div className="latency-monitor-spark">
+          {monitor.samples.length > 0 ? (
+            <ConnectionSparkline samples={monitor.samples} id={monitor.id} />
+          ) : (
+            <span className="no-sparkline-text">No samples yet</span>
+          )}
+        </div>
+
+        <div className="status-item-right-sec latency-monitor-metrics">
+          <div className="header-metric">
+            <span className="m-label">Checks</span>
+            <strong className="m-val">{compactNumber(monitor.checks)}</strong>
+          </div>
+          <div className="header-metric">
+            <span className="m-label">Connected</span>
+            <strong className="m-val">{monitor.okCount} / {monitor.checks}</strong>
+          </div>
+          <div className="header-metric">
+            <span className="m-label">Uptime</span>
+            <strong className="m-val">{monitor.uptime !== undefined ? `${(monitor.uptime * 100).toFixed(0)}%` : "N/A"}</strong>
+          </div>
+          <div className="header-metric">
+            <span className="m-label">Last</span>
+            <strong className="m-val">{fmtLatency(monitor.lastLatencyMs)}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="latency-monitor-stats">
+        <div className="lm-stat"><span>Avg</span><strong>{fmtLatency(monitor.avgLatencyMs)}</strong></div>
+        <div className="lm-stat"><span>Min</span><strong>{fmtLatency(monitor.minLatencyMs)}</strong></div>
+        <div className="lm-stat"><span>Max</span><strong>{fmtLatency(monitor.maxLatencyMs)}</strong></div>
+        <div className="lm-stat"><span>Failures</span><strong>{compactNumber(monitor.failCount)}</strong></div>
+        <div className="lm-stat lm-stat--time"><span>Last checked</span><strong>{monitor.lastCheckedAt ? formatUsageDateTime(monitor.lastCheckedAt) : "Never"}</strong></div>
+      </div>
+    </div>
+  );
+}
+
+function ConnectionSparkline({ samples, id }: { samples: ConnectionSample[]; id: string }) {
+  const width = 160;
+  const height = 36;
+  const points = samples.slice(-40);
+  const latencies = points.map((s) => (s.ok && typeof s.latencyMs === "number" ? s.latencyMs : null));
+  const known = latencies.filter((l): l is number => l !== null);
+  const max = known.length > 0 ? Math.max(...known) : 1;
+  const min = known.length > 0 ? Math.min(...known) : 0;
+  const range = max - min || 1;
+  const step = points.length > 1 ? width / (points.length - 1) : width;
+  const gradId = `lmgrad-${id}`;
+
+  const path = latencies
+    .map((l, i) => {
+      if (l === null) return null;
+      const x = i * step;
+      const y = height - 4 - ((l - min) / range) * (height - 8);
+      return { x, y };
+    })
+    .filter((p): p is { x: number; y: number } => p !== null);
+
+  const line = path.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+
+  return (
+    <svg className="connection-sparkline" width={width} height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--primary, #6366f1)" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="var(--primary, #6366f1)" stopOpacity="0.1" />
+        </linearGradient>
+      </defs>
+      {points.map((s, i) => (
+        <circle key={i} cx={(i * step).toFixed(1)} cy={height - 3} r={1.6} fill={s.ok ? "var(--success, #10b981)" : "var(--danger, #ef4444)"} opacity={0.85} />
+      ))}
+      {line && <path d={line} fill="none" stroke={`url(#${gradId})`} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+    </svg>
   );
 }
 

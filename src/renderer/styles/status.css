@@ -1312,3 +1312,75 @@
     grid-column: span 1;
   }
 }
+
+/* --- Connection Latency Monitor (background probe, every 10s) --- */
+.latency-monitor-card {
+  cursor: default;
+  display: grid;
+  gap: 14px;
+}
+
+.latency-monitor-header {
+  cursor: default;
+}
+
+.latency-monitor-spark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 160px;
+  padding: 0 12px;
+}
+
+.connection-sparkline {
+  width: 160px;
+  height: 36px;
+  overflow: visible;
+}
+
+.latency-monitor-metrics {
+  gap: 18px;
+}
+
+.latency-monitor-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+  padding: 12px 16px 2px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.lm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 64px;
+}
+
+.lm-stat span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #64748b);
+}
+
+.lm-stat strong {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.lm-stat--time {
+  margin-left: auto;
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .latency-monitor-spark {
+    display: none;
+  }
+  .lm-stat--time {
+    margin-left: 0;
+    text-align: left;
+  }
+}

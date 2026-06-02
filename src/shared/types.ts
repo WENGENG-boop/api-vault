@@ -76,6 +76,14 @@ export interface ProviderSafe {
   status?: LocalServiceStatus;
   latencyMs?: number;
   lastCheckedAt?: string;
+  connectionHistory?: ConnectionSample[];
+}
+
+/** A single result from the background connection probe (runs every 10s per provider). */
+export interface ConnectionSample {
+  at: string;
+  ok: boolean;
+  latencyMs?: number;
 }
 
 export interface UsageEvent {

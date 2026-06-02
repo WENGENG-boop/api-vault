@@ -17,6 +17,7 @@ import type {
   BalanceSnapshot,
   CloudflaredStatus,
   CloudflaredConfig,
+  ConnectionSample,
   DashboardTotals,
   LocalService,
   LocalServiceProtocol,
@@ -72,6 +73,7 @@ interface ProviderRecord {
   status?: LocalServiceStatus;
   latencyMs?: number;
   lastCheckedAt?: string;
+  connectionHistory?: ConnectionSample[];
 }
 
 interface ProxyTokenRecord {
@@ -225,6 +227,8 @@ class JsonFileStorageAdapter implements StorageAdapter {
 
 const RECENT_USAGE_LIMIT = 1000;
 const BALANCE_SNAPSHOT_LIMIT = 1000;
+// ~10 minutes of probe history at the 10s background interval.
+const CONNECTION_HISTORY_LIMIT = 60;
 const USAGE_FLUSH_INTERVAL_MS = 5000;
 const USAGE_FLUSH_BATCH_SIZE = 50;
 
@@ -1152,6 +1156,13 @@ export class VaultStore {
     provider.status = status;
     if (latencyMs !== undefined) provider.latencyMs = latencyMs;
     if (checkedAt) provider.lastCheckedAt = checkedAt;
+    const history = provider.connectionHistory ?? [];
+    history.push({
+      at: checkedAt ?? new Date().toISOString(),
+      ok: status === "available",
+      latencyMs
+    });
+    provider.connectionHistory = history.slice(-CONNECTION_HISTORY_LIMIT);
     provider.updatedAt = new Date().toISOString();
     this.save();
   }
@@ -1329,7 +1340,8 @@ export class VaultStore {
       isLocal: provider.isLocal ?? false,
       status: provider.status ?? "unknown",
       latencyMs: provider.latencyMs,
-      lastCheckedAt: provider.lastCheckedAt
+      lastCheckedAt: provider.lastCheckedAt,
+      connectionHistory: provider.connectionHistory ?? []
     };
   }
 
@@ -1685,7 +1697,13 @@ function migrateProvider(raw: any): ProviderRecord {
     isLocal: Boolean(raw.isLocal),
     status: normalizeConnectionStatus(raw.status),
     latencyMs: typeof raw.latencyMs === "number" ? raw.latencyMs : undefined,
-    lastCheckedAt: typeof raw.lastCheckedAt === "string" ? raw.lastCheckedAt : undefined
+    lastCheckedAt: typeof raw.lastCheckedAt === "string" ? raw.lastCheckedAt : undefined,
+    connectionHistory: Array.isArray(raw.connectionHistory)
+      ? raw.connectionHistory
+          .filter((s: any) => s && typeof s.at === "string" && typeof s.ok === "boolean")
+          .map((s: any) => ({ at: s.at, ok: s.ok, latencyMs: typeof s.latencyMs === "number" ? s.latencyMs : undefined }))
+          .slice(-CONNECTION_HISTORY_LIMIT)
+      : undefined
   };
 }
 
