@@ -3,13 +3,14 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 title API Vault Starter
 set "PORT=3210"
-set "APP_URL=http://127.0.0.1:3210"
+set "BASE_URL=http://127.0.0.1:3210"
+set "APP_URL=%BASE_URL%/vault"
 
 call :refreshPath
 call :ensureNodeAndNpm
 if errorlevel 1 exit /b 1
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing '%APP_URL%/api/state' -TimeoutSec 1 | Out-Null; Start-Process '%APP_URL%'; exit 0 } catch { exit 1 }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { Invoke-WebRequest -UseBasicParsing '%BASE_URL%/api/state' -TimeoutSec 1 | Out-Null; Start-Process '%APP_URL%'; exit 0 } catch { exit 1 }"
 if "%ERRORLEVEL%"=="0" exit /b 0
 
 if not exist "node_modules" (

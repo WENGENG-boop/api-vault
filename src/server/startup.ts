@@ -52,5 +52,5 @@ export function openBrowser(url: string): void {
 }
 
 export function localAppUrl(port = DEFAULT_PORT): string {
-  return `http://127.0.0.1:${port}`;
+  return `http://127.0.0.1:${port}/vault`;
 }

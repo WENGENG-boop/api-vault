@@ -788,18 +788,6 @@ function maxProxyBodyBytes(): number {
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_BODY_LIMIT_BYTES;
 }
 
-function replaceRequestModel(body: Buffer, model: string | undefined): Buffer {
-  if (!model || body.length === 0) return body;
-  try {
-    const parsed = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
-    if (typeof parsed.model === "string") {
-      parsed.model = model;
-      return Buffer.from(JSON.stringify(parsed), "utf8");
-    }
-  } catch {}
-  return body;
-}
-
 function injectStreamOptions(body: Buffer, parsed?: Record<string, unknown>): Buffer {
   try {
     const object = parsed ?? JSON.parse(body.toString("utf8")) as Record<string, unknown>;

@@ -19,9 +19,7 @@ function isAllowedOrigin(origin: string, hostHeader?: string): boolean {
   const configured = (process.env.API_VAULT_CORS_ORIGINS || "").split(",").map((item) => item.trim()).filter(Boolean);
   if (configured.length > 0) return configured.includes(origin);
   const host = hostHeader ?? `127.0.0.1:${DEFAULT_PORT}`;
-  return origin === `http://${host}` || 
-         origin === `http://127.0.0.1:${DEFAULT_PORT}` || 
-         origin === `http://localhost:${DEFAULT_PORT}` ||
-         origin === "http://127.0.0.1:5173" ||
-         origin === "http://localhost:5173";
+  return origin === `http://${host}` ||
+         origin === `http://127.0.0.1:${DEFAULT_PORT}` ||
+         origin === `http://localhost:${DEFAULT_PORT}`;
 }

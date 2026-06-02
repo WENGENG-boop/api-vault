@@ -26,5 +26,10 @@
       "Bash(npx jest *)",
       "Bash(node --test tests/statusStats.test.cjs)"
     ]
-  }
+  },
+  "disabledMcpjsonServers": [
+    "claude-flow",
+    "ruv-swarm",
+    "flow-nexus"
+  ]
 }

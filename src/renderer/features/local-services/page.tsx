@@ -89,8 +89,8 @@ export function LocalServicesPage({ state, setState, showMsg, showErr }: {
       });
       setCfStatus(result.status);
       setCfLogs((result.logs ?? []).slice(-5).map((l) => `${l.ts} ${l.message}`));
-      if (result.ok && result.status.publicUrl) showMsg(`Tunnel: ${result.status.publicUrl}`);
-      else showErr(result.message);
+      if (!result.ok) showErr(result.message);
+      else if (result.status.publicUrl) showMsg(`Tunnel: ${result.status.publicUrl}`);
     } catch (e) { showErr(e); }
     finally { setCfLoading(false); }
   }

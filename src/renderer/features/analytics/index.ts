@@ -1,1 +1,1 @@
-export { Analytics } from "./page";
+export { UsageAnalytics } from "./page";

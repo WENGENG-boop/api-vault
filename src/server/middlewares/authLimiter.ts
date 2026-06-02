@@ -18,9 +18,20 @@ class SimpleLimiter {
     this.attempts.set(key, next);
     return next.count <= this.limit;
   }
+
+  reset(): void {
+    this.attempts.clear();
+  }
 }
 
 const authFailures = new SimpleLimiter(12, 60_000);
+
+// Test-only hook. The limiter is a process-global singleton (correct for
+// production: one bucket per client IP), so test cases that assert exact
+// counts must reset it to stay isolated from each other.
+export function resetAuthLimiter(): void {
+  authFailures.reset();
+}
 
 export function enforceAuthLimiter(req: IncomingMessage): void {
   const key = authLimiterKey(req);
@@ -34,5 +45,8 @@ export function recordAuthFailure(req: IncomingMessage): void {
 }
 
 function authLimiterKey(req: IncomingMessage): string {
-  return `${req.socket.remoteAddress ?? "local"}:${req.headers.host ?? ""}`;
+  // Key on the network peer only. The Host header is client-controlled, so
+  // including it would let a brute-force attacker reset their bucket each
+  // request by rotating Host, defeating the limiter.
+  return req.socket.remoteAddress ?? "local";
 }

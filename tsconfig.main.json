@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["src/main/**/*.ts", "src/server/**/*.ts", "src/shared/**/*.ts"]
+  "include": ["src/electron/**/*.ts", "src/main/**/*.ts", "src/server/**/*.ts", "src/shared/**/*.ts"]
 }

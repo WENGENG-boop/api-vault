@@ -14,6 +14,16 @@ import { buildUpstreamUrl, normalizeProxySuffixPath } from "../../main/proxy";
 import type { VaultStore } from "../../main/store";
 import { extractRequestModel, extractUsageFromResponse } from "../../main/usage";
 
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  return address === "::1" || address === "::ffff:127.0.0.1" || address.startsWith("127.");
+}
+
+function isLocalProxyAllowed(req: IncomingMessage): boolean {
+  if (process.env.API_VAULT_ALLOW_REMOTE_LOCAL_PROXY === "1") return true;
+  return isLoopbackAddress(req.socket.remoteAddress);
+}
+
 export async function handleLocalServiceProxy(
   store: VaultStore,
   req: IncomingMessage,
@@ -22,6 +32,14 @@ export async function handleLocalServiceProxy(
   suffixPath: string,
   search: string
 ): Promise<void> {
+  if (!isLocalProxyAllowed(req)) {
+    res.writeHead(403, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      error: "Local service proxy is restricted to loopback clients. Set API_VAULT_ALLOW_REMOTE_LOCAL_PROXY=1 to allow remote access.",
+      code: "local_proxy_forbidden"
+    }));
+    return;
+  }
   const service = store.getLocalService(serviceId);
   if (!service) {
     res.writeHead(404, { "content-type": "application/json" });

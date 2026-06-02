@@ -7,6 +7,7 @@ const path = require("node:path");
 const { createApiServer } = require("../dist-main/server/server.js");
 const { ProxyServer } = require("../dist-main/main/proxy.js");
 const { VaultStore } = require("../dist-main/main/store.js");
+const { resetAuthLimiter } = require("../dist-main/server/middlewares/authLimiter.js");
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -1476,6 +1477,9 @@ test("public proxy preserves multimodal image inputs across OpenAI and Anthropic
 });
 
 test("successful unlocks do not consume auth failure quota", async () => {
+  // The auth limiter buckets per client IP (process-global). Reset it so this
+  // test's exact-count assertions are not polluted by earlier tests' failures.
+  resetAuthLimiter();
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-auth-limit-"));
   const store = new VaultStore(path.join(tempDir, "vault.json"));
   const proxy = new ProxyServer(store);

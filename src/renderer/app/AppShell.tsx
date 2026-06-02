@@ -24,6 +24,7 @@ export function AppShell({ state, tab, message, error, onTabChange, onLock, chil
   const totalCalls = state.totals?.totalCalls ?? 0;
 
   const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
     return localStorage.getItem("sidebar-collapsed") === "true";
   });
 

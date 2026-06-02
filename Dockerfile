@@ -5,8 +5,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-COPY tsconfig.json tsconfig.main.json vite.config.ts index.html ./
+COPY tsconfig.json tsconfig.main.json next.config.mjs ./
 COPY src ./src
+COPY public ./public
+COPY website ./website
 RUN npm run build
 
 FROM node:24-bookworm-slim AS runtime
@@ -22,7 +24,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --from=build /app/dist ./dist
+COPY --from=build /app/out ./out
 COPY --from=build /app/dist-main ./dist-main
 
 RUN mkdir -p /app/.api-vault

@@ -82,7 +82,7 @@ declare global {
   }
 }
 
-export const apiClient: ApiVaultClient = window.apiVault ?? {
+export const apiClient: ApiVaultClient = typeof window !== "undefined" && window.apiVault ? window.apiVault : {
   getState: () => request<AppState>("/api/state"),
   setupVault: (password: string) => request<AppState>("/api/vault/setup", {
     method: "POST",
@@ -234,7 +234,7 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   if (adminToken) headers["x-api-vault-admin"] = adminToken;
   if (options.body !== undefined) headers["content-type"] = "application/json";
 
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     method: options.method ?? "GET",
     headers: Object.keys(headers).length ? headers : undefined,
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
@@ -251,6 +251,11 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
   }
   rememberAdminToken(data);
   return data as T;
+}
+
+function apiUrl(path: string): string {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  return baseUrl ? `${baseUrl.replace(/\/$/, "")}${path}` : path;
 }
 
 const ADMIN_TOKEN_STORAGE_KEY = "api-vault-admin-token";

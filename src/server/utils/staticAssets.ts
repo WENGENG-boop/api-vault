@@ -10,10 +10,13 @@ export function serveStatic(pathname: string, res: ServerResponse): void {
   
   const rel = relative(DIST_DIR, absolute);
   const isSafe = !rel.startsWith("..") && !isAbsolute(rel);
-  
-  const filePath = isSafe && existsSync(absolute) && statSync(absolute).isFile()
-    ? absolute
-    : join(DIST_DIR, "index.html");
+  let filePath = join(DIST_DIR, "index.html");
+  if (isSafe && existsSync(absolute)) {
+    const stats = statSync(absolute);
+    filePath = stats.isDirectory() ? join(absolute, "index.html") : absolute;
+  } else if (isSafe && !absolute.match(/\.[^/\\]+$/)) {
+    filePath = join(absolute, "index.html");
+  }
 
   if (!existsSync(filePath)) {
     sendText(res, 503, "The frontend is not built yet. Run npm run build first.");

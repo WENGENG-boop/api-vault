@@ -1,6 +1,9 @@
 node_modules/
 dist/
 dist-main/
+.next/
+out/
+*.tsbuildinfo
 .api-vault/
 *.log
 npm-debug.log*
