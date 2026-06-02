@@ -16,6 +16,7 @@ the top-level [`../README.md`](../README.md).
 | [Architecture](./architecture.md) | Modules, processes, and the request/response flow |
 | [Configuration](./configuration.md) | Every environment variable, port, and data path |
 | [API Reference](./api-reference.md) | Management REST API and the proxy gateway API |
+| [Latency Monitoring](./latency-monitoring.md) | The Status page's hourly latency view (provider probe + model calls) |
 | [Security](./security.md) | Encryption, authentication, rate limiting, threat model |
 | [Deployment](./deployment.md) | Docker, remote access, and Cloudflare Tunnel |
 | [Development](./development.md) | Build pipeline, tests, project layout, contributing |
