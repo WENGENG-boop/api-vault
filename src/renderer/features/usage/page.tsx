@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppState, UsageEvent } from "../../../shared/types";
-import { USAGE_PAGE_SIZE } from "../../shared/config";
+import { USAGE_PAGE_SIZE, USAGE_MAX_PAGES } from "../../shared/config";
 import { Button, EmptyState, PageHeader, StatusPill } from "../../shared/components";
 import { compactNumber, formatMoney, formatUsageDateTime, gatewayLabel } from "../../shared/utils";
 
@@ -38,7 +38,7 @@ export function Usage({ state }: { state: AppState }) {
   }, [apiKeyId, filter, providerId, state.usageEvents]);
 
   const totalCost = useMemo(() => filtered.reduce((sum, e) => sum + (e.realCost ?? 0), 0), [filtered]);
-  const pageCount = Math.max(1, Math.min(10, Math.ceil(filtered.length / USAGE_PAGE_SIZE)));
+  const pageCount = Math.max(1, Math.min(USAGE_MAX_PAGES, Math.ceil(filtered.length / USAGE_PAGE_SIZE)));
   const currentPage = Math.min(page, pageCount);
   const paged = useMemo(() => {
     const start = (currentPage - 1) * USAGE_PAGE_SIZE;
@@ -81,8 +81,10 @@ export function Usage({ state }: { state: AppState }) {
           <span>showing {pageStart}-{pageEnd} of {filtered.length} logs</span>
           <div>
             <button type="button" disabled={currentPage === 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>Prev</button>
-            {Array.from({ length: pageCount }, (_, index) => index + 1).map((item) => (
-              <button type="button" key={item} className={item === currentPage ? "active" : ""} onClick={() => setPage(item)}>{item}</button>
+            {pageWindow(currentPage, pageCount).map((item, index) => (
+              item === "gap"
+                ? <span key={`gap-${index}`} className="usage-page-gap">...</span>
+                : <button type="button" key={item} className={item === currentPage ? "active" : ""} onClick={() => setPage(item)}>{item}</button>
             ))}
             <button type="button" disabled={currentPage === pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))}>Next</button>
           </div>
@@ -183,6 +185,26 @@ function UsageEventDetails({ event, onClose }: { event: UsageEvent; onClose: () 
 
 function usageErrorText(event: UsageEvent): string {
   return event.error ?? event.errorMessage ?? "";
+}
+
+// Compact pager: first/last pages plus a window around the current page, with
+// "gap" markers where pages are skipped. Avoids rendering dozens of buttons.
+function pageWindow(current: number, total: number, span = 1): Array<number | "gap"> {
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+  const pages = new Set<number>([1, total, current]);
+  for (let offset = 1; offset <= span; offset++) {
+    if (current - offset >= 1) pages.add(current - offset);
+    if (current + offset <= total) pages.add(current + offset);
+  }
+  const sorted = Array.from(pages).sort((a, b) => a - b);
+  const result: Array<number | "gap"> = [];
+  let previous = 0;
+  for (const page of sorted) {
+    if (previous && page - previous > 1) result.push("gap");
+    result.push(page);
+    previous = page;
+  }
+  return result;
 }
 
 function DetailItem({ label, value, code = false }: { label: string; value: string; code?: boolean }) {

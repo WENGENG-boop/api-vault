@@ -1526,6 +1526,14 @@ textarea:focus {
   cursor: not-allowed !important;
 }
 
+.usage-page-gap {
+  display: inline-flex !important;
+  align-items: center !important;
+  padding: 6px 4px !important;
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+}
+
 /* ==========================================================================
    Google Status Page Overhaul (Material Symbols & Table Alignments)
    ========================================================================== */
