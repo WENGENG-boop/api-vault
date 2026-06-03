@@ -1,694 +1,452 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>API Vault - Local AI API Proxy, Key Manager & Usage Dashboard</title>
-  <meta name="description" content="API Vault is a local browser dashboard and proxy for managing multiple AI API providers, API keys, usage records, and sync balance data locally.">
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Vault — Local AI API proxy, key manager & usage dashboard</title>
+  <meta name="description" content="API Vault is an open-source, local-first proxy and dashboard for managing AI API keys, forwarding OpenAI- and Anthropic-compatible requests, and tracking every token, cost, and latency — without sending data to the cloud." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
-  <!-- Navigation Bar -->
-  <nav class="navbar" id="navbar">
-    <div class="nav-logo">
-      <div class="logo-icon">AV</div>
-      <span>API Vault</span>
-    </div>
-    
-    <div class="nav-links">
-      <a href="#sandbox" class="nav-item">Sandbox</a>
-      <a href="#features" class="nav-item">Features</a>
-      <a href="#architecture" class="nav-item">How It Works</a>
-      <a href="#quick-start" class="nav-item">Quick Start</a>
-    </div>
+  <!-- ============ NAV ============ -->
+  <nav class="nav" id="nav">
+    <div class="container nav-inner">
+      <a href="#top" class="brand"><span class="mark">AV</span> API Vault</a>
 
-    <div class="nav-actions">
-      <button class="btn-icon" id="theme-toggle" aria-label="Toggle Dark Mode">
-        <span class="theme-icon">
-          <!-- Sun Icon default -->
-          <svg class="svg-icon" viewBox="0 0 24 24">
-            <path d="M12.3 2a10 10 0 0 0-1.9 19.8 10 10 0 0 0 11.6-11.6A10 10 0 0 0 12.3 2zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z"/>
-          </svg>
-        </span>
-      </button>
-      <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" class="btn btn-secondary">
-        <svg class="svg-icon" viewBox="0 0 24 24">
-          <path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/>
-        </svg>
-        GitHub
-      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="#product" data-i18n="nav.product">Product</a>
+        <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#how" data-i18n="nav.how">How it works</a>
+        <a href="#start" data-i18n="nav.start">Quick start</a>
+      </div>
+
+      <div class="nav-right">
+        <div class="lang" id="lang" role="group" aria-label="Language">
+          <button data-lang="en">EN</button>
+          <button data-lang="zh">中</button>
+        </div>
+        <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5A10 10 0 0 0 12 2z"/></svg>
+          GitHub
+        </a>
+        <button class="nav-toggle" id="navToggle" aria-label="Menu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
+        </button>
+      </div>
     </div>
   </nav>
 
-  <!-- Hero Section -->
-  <header class="hero">
-    <div class="hero-badge">Local-First AI Proxy</div>
-    <h1 class="hero-title">
-      Secure your API keys. Track every <span class="blue">token</span>, <span class="red">cost</span>, &amp; <span class="green">latency</span>.
-    </h1>
-    <p class="hero-subtitle">
-      API Vault is an open-source, local-first developer dashboard. It runs as a lightweight local proxy, securing your API keys, detailing usage history, and syncing provider balances.
-    </p>
-    <div class="hero-ctas">
-      <a href="#quick-start" class="btn btn-primary">Get Started</a>
-      <a href="#sandbox" class="btn btn-secondary">Try Live Sandbox</a>
-    </div>
-  </header>
+  <main id="top">
 
-  <!-- Interactive Sandbox Section -->
-  <section id="sandbox" class="playground-section">
-    <h2 class="playground-title">Interactive Request Sandbox</h2>
-    <p class="playground-subtitle">Simulate a request flowing through API Vault to see how it intercepts, forwards, and audits API traffic.</p>
-    
-    <div class="playground-container">
-      
-      <!-- Simulator Pipeline Flow -->
-      <div class="simulator-flow">
-        
-        <!-- SVG lines to animate data flow -->
-        <svg class="flow-svg">
-          <path id="line-client-proxy" class="flow-line-active" d="M 170 85 L 430 85" />
-          <path id="line-proxy-provider" class="flow-line-active" d="M 650 85 L 890 85" />
-          
-          <path class="flow-line" d="M 170 85 L 430 85" />
-          <path class="flow-line" d="M 650 85 L 890 85" />
-        </svg>
-
-        <!-- Client App Node -->
-        <div class="node node-app">
-          <div class="node-header">
-            <div class="node-icon">C</div>
-            <span>Third-Party App</span>
-          </div>
-          <p style="font-size:0.8rem; color:var(--text-secondary);">Select a model to send a chat completion request.</p>
-          <div>
-            <label style="font-size: 0.75rem; font-weight: 500; display: block; margin-bottom: 4px;">Choose Model</label>
-            <select id="model-select">
-              <option value="openai/gpt-4o">gpt-4o (OpenAI)</option>
-              <option value="deepseek/deepseek-chat">deepseek-chat (DeepSeek)</option>
-              <option value="claude/claude-3-5-sonnet">claude-3-5-sonnet (Claude)</option>
-            </select>
-          </div>
-          <button class="node-btn" id="simulate-btn">Send Mock Request</button>
+    <!-- ============ HERO ============ -->
+    <header class="hero">
+      <div class="container">
+        <span class="eyebrow reveal" data-i18n="hero.badge">Local-first · Open source</span>
+        <h1 class="reveal" style="animation-delay:.05s" data-i18n-html="hero.title">
+          Every AI API key, request, and token — in one <span class="accent">local vault</span>.
+        </h1>
+        <p class="lede reveal" style="animation-delay:.1s" data-i18n="hero.lede">
+          API Vault is an open-source, local-first proxy and dashboard. It encrypts your API keys on your own machine, forwards OpenAI- and Anthropic-compatible requests, and records every token, cost, and latency — without sending anything to the cloud.
+        </p>
+        <div class="hero-ctas reveal" style="animation-delay:.15s">
+          <a href="#start" class="btn btn-primary" data-i18n="hero.cta1">Get started</a>
+          <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" class="btn btn-outline" data-i18n="hero.cta2">View on GitHub</a>
         </div>
-
-        <!-- API Vault Proxy Node -->
-        <div class="node node-proxy">
-          <div class="proxy-badge">LOCAL PROXY</div>
-          <div class="node-header">
-            <div class="node-icon">AV</div>
-            <span>API Vault</span>
-          </div>
-          <p style="font-size:0.8rem; color:var(--text-secondary);">Local Server intercepting calls on port <code>3210</code>.</p>
-          <div>
-            <label style="font-size: 0.75rem; font-weight: 500; display: block; margin-bottom: 4px;">Target Base URL</label>
-            <div class="proxy-url-display" id="proxy-url-display">http://127.0.0.1:3210/proxy/openai_provider/v1</div>
-          </div>
-        </div>
-
-        <!-- Upstream LLM Provider Node -->
-        <div class="node node-provider">
-          <div class="node-header">
-            <div class="node-icon">P</div>
-            <span>AI Upstream Provider</span>
-          </div>
-          <p style="font-size:0.8rem; color:var(--text-secondary);">Authenticates with the decrypted real API key.</p>
-          <div class="provider-list">
-            <div class="provider-item active" id="prov-openai">
-              <div class="provider-dot"></div>
-              <span>api.openai.com</span>
-            </div>
-            <div class="provider-item" id="prov-deepseek">
-              <div class="provider-dot"></div>
-              <span>api.deepseek.com</span>
-            </div>
-            <div class="provider-item" id="prov-claude">
-              <div class="provider-dot"></div>
-              <span>api.anthropic.com</span>
-            </div>
-          </div>
-        </div>
-
+        <p class="hero-note reveal" style="animation-delay:.2s">
+          <span data-i18n="hero.note1">Runs locally at</span> <code>localhost:3210</code> ·
+          <span data-i18n="hero.note2">Docker or one-click Windows start</span>
+        </p>
       </div>
 
-      <!-- Simulator Dashboard -->
-      <div class="simulator-dashboard">
-        
-        <!-- Live Dashboard Panel Group with Tabs -->
-        <div class="dashboard-stats">
-          <div class="simulator-dashboard-header">
-            <div class="dash-tabs">
-              <button class="dash-tab-btn active" data-dash-tab="usage-analytics">Usage Analytics</button>
-              <button class="dash-tab-btn" data-dash-tab="model-dir">Model Directory</button>
-              <button class="dash-tab-btn" data-dash-tab="provider-status">Provider Status</button>
+      <!-- Hero product shot: Usage analytics -->
+      <div class="container hero-shot reveal" style="animation-delay:.25s">
+        <div class="window">
+          <div class="window-bar">
+            <span class="window-dots"><i></i><i></i><i></i></span>
+            <span class="window-url">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zM9 6a3 3 0 0 1 6 0v2H9V6z"/></svg>
+              127.0.0.1:3210
+            </span>
+          </div>
+          <div class="window-body">
+            <div class="mock-tabs">
+              <span data-i18n="shot.tab.overview">Overview</span>
+              <span class="on" data-i18n="shot.tab.models">Models</span>
+            </div>
+            <div class="mock-row">
+              <div class="mock-total">144,474,006 <small data-i18n="shot.tokens">tokens · today</small></div>
+              <div class="chips">
+                <span class="chip" data-i18n="shot.range.all">All</span>
+                <span class="chip" data-i18n="shot.range.30">30d</span>
+                <span class="chip" data-i18n="shot.range.7">7d</span>
+                <span class="chip on" data-i18n="shot.range.today">Today</span>
+              </div>
+            </div>
+            <div class="bars">
+              <div class="bar"><span class="nm">claude-opus-4-7</span><span class="track"><span class="fill" style="width:88%"></span></span><span class="pct">36.4%</span></div>
+              <div class="bar"><span class="nm">deepseek-v4</span><span class="track"><span class="fill l2" style="width:52%"></span></span><span class="pct">19.8%</span></div>
+              <div class="bar"><span class="nm">claude-haiku-4-5</span><span class="track"><span class="fill l3" style="width:36%"></span></span><span class="pct">13.2%</span></div>
+              <div class="bar"><span class="nm">claude-sonnet-4-6</span><span class="track"><span class="fill l4" style="width:28%"></span></span><span class="pct">10.4%</span></div>
+              <div class="bar"><span class="nm">gemini-flash</span><span class="track"><span class="fill l5" style="width:22%"></span></span><span class="pct">8.3%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============ COMPAT STRIP ============ -->
+    <section class="compat">
+      <div class="container compat-inner">
+        <span class="compat-label" data-i18n="compat.label">Works with</span>
+        <div class="compat-list">
+          <span>OpenAI</span><span>Anthropic</span><span>DeepSeek</span><span>OpenRouter</span><span>Gemini</span>
+          <span data-i18n="compat.more">+ any compatible API</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PRODUCT SHOWCASE ============ -->
+    <section id="product" class="section">
+      <div class="container">
+        <div class="section-head">
+          <span class="kicker" data-i18n="product.kicker">The dashboard</span>
+          <h2 data-i18n="product.title">A clear view of every call that passes through</h2>
+          <p data-i18n="product.sub">API Vault records each request locally and turns it into usage, health, and model insights you can act on.</p>
+        </div>
+
+        <div class="showcase">
+
+          <!-- Row 1: Usage analytics -->
+          <div class="show-row">
+            <div class="show-text">
+              <span class="kicker" data-i18n="r1.kicker">Usage analytics</span>
+              <h3 data-i18n="r1.title">See exactly where your tokens go</h3>
+              <p data-i18n="r1.text">Per-model breakdowns of input and output tokens, request counts, and cost. Filter by today, 7 days, 30 days, or all time.</p>
+              <ul class="show-list">
+                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r1.li1">Input / output token split per model</span></li>
+                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r1.li2">Request counts and success ratio</span></li>
+                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r1.li3">Cost when the provider reports it</span></li>
+              </ul>
+            </div>
+            <div class="show-media">
+              <div class="window">
+                <div class="window-bar"><span class="window-dots"><i></i><i></i><i></i></span><span class="window-url">127.0.0.1:3210/usage</span></div>
+                <div class="window-body">
+                  <div class="mock-row">
+                    <div class="mock-total">2,418 <small data-i18n="r1.calls">calls · today</small></div>
+                    <div class="chips"><span class="chip on">Today</span><span class="chip">7d</span><span class="chip">30d</span></div>
+                  </div>
+                  <div class="bars">
+                    <div class="bar"><span class="nm">claude-opus-4-7</span><span class="track"><span class="fill" style="width:82%"></span></span><span class="pct">36.4%</span></div>
+                    <div class="bar"><span class="nm">deepseek-v4</span><span class="track"><span class="fill l2" style="width:48%"></span></span><span class="pct">19.8%</span></div>
+                    <div class="bar"><span class="nm">claude-haiku-4-5</span><span class="track"><span class="fill l3" style="width:34%"></span></span><span class="pct">13.2%</span></div>
+                    <div class="bar"><span class="nm">claude-sonnet-4-6</span><span class="track"><span class="fill l4" style="width:26%"></span></span><span class="pct">10.4%</span></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="simulator-dashboard-content">
-            
-            <!-- Tab 1: Model Directory (Screenshot 3 aligned) -->
-            <div class="dash-tab-content" id="dash-model-dir">
-              <div class="model-dir-mock">
-                <div class="dir-topbar">
-                  <div class="dir-tabs">
-                    <span class="dir-tab active">Access Control</span>
-                    <span class="dir-tab">Gateway</span>
-                    <span class="dir-tab">Analytics &amp; Billing</span>
-                  </div>
-                  <div class="dir-top-right">
-                    <span class="top-status-badge grey">Proxy: 127.0.0.1:3210</span>
-                    <span class="top-status-badge red" id="mock-tunnel-badge">Tunnel: Off</span>
-                    <button class="btn-legacy">Lock Vault</button>
-                    <button class="btn-legacy">Legacy UI</button>
-                  </div>
-                </div>
-                <div class="dir-layout">
-                  <div class="dir-sidebar">
-                    <div class="sidebar-item"><svg class="svg-icon" viewBox="0 0 24 24" style="width:14px; height:14px; margin-right:6px;"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>Proxy Tokens</div>
-                    <div class="sidebar-item active"><svg class="svg-icon" viewBox="0 0 24 24" style="width:14px; height:14px; margin-right:6px;"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>Models</div>
-                  </div>
-                  <div class="dir-main">
-                    <div class="dir-main-header">
-                      <span class="calls-counter" id="mock-total-calls">4,952 calls recorded</span>
-                      <button class="btn-add-model">+ Add Manual Model</button>
+          <!-- Row 2: Provider status -->
+          <div class="show-row flip">
+            <div class="show-text">
+              <span class="kicker" data-i18n="r2.kicker">Provider status</span>
+              <h3 data-i18n="r2.title">Know which providers are healthy</h3>
+              <p data-i18n="r2.text">Aggregated success rate, latency, and call volume per provider over a rolling window, so you can spot outages and degradations early.</p>
+              <ul class="show-list">
+                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r2.li1">Healthy / degraded / outage at a glance</span></li>
+                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r2.li2">Rolling 7-day success and latency</span></li>
+              </ul>
+            </div>
+            <div class="show-media">
+              <div class="window">
+                <div class="window-bar"><span class="window-dots"><i></i><i></i><i></i></span><span class="window-url">127.0.0.1:3210/status</span></div>
+                <div class="window-body">
+                  <div class="pstatus">
+                    <div class="prow">
+                      <div class="who"><span class="dot bad"></span><div><div class="nm">provider-a</div><div class="ur">api.provider-a.net</div></div></div>
+                      <div class="pcol"><span class="tag bad" data-i18n="status.outage">Outage</span></div>
+                      <div class="pcol"><span class="lb" data-i18n="status.success">Success</span><span class="vl">65.7%</span></div>
+                      <div class="pcol"><span class="lb" data-i18n="status.latency">Latency</span><span class="vl">11,691ms</span></div>
                     </div>
-                    <div class="dir-search-bar">
-                      <input type="text" placeholder="Search model ID, alias, or provider" disabled>
-                      <div class="dir-dropdowns">
-                        <span class="mock-dropdown">All Providers ▾</span>
-                        <span class="mock-dropdown">All Capabilities ▾</span>
-                      </div>
+                    <div class="prow">
+                      <div class="who"><span class="dot warn"></span><div><div class="nm">provider-d</div><div class="ur">api.provider-d.net/v1</div></div></div>
+                      <div class="pcol"><span class="tag warn" data-i18n="status.degraded">Degraded</span></div>
+                      <div class="pcol"><span class="lb" data-i18n="status.success">Success</span><span class="vl">84.5%</span></div>
+                      <div class="pcol"><span class="lb" data-i18n="status.latency">Latency</span><span class="vl">1,683ms</span></div>
                     </div>
-                    <div class="dir-filter-pills">
-                      <span class="pill-label">Sync models</span>
-                      <span class="filter-pill active">provider-a</span>
-                      <span class="filter-pill">provider-e</span>
-                      <span class="filter-pill">provider-c</span>
-                      <span class="filter-pill">provider-b</span>
-                      <span class="filter-pill">provider-d</span>
+                    <div class="prow">
+                      <div class="who"><span class="dot ok"></span><div><div class="nm">provider-f</div><div class="ur">api.provider-f.com/v1</div></div></div>
+                      <div class="pcol"><span class="tag ok" data-i18n="status.healthy">Healthy</span></div>
+                      <div class="pcol"><span class="lb" data-i18n="status.success">Success</span><span class="vl">99.2%</span></div>
+                      <div class="pcol"><span class="lb" data-i18n="status.latency">Latency</span><span class="vl">612ms</span></div>
                     </div>
-                    <div class="dir-summary-tags">
-                      <span>432 provider models</span>
-                      <span>415 grouped names</span>
-                      <span>0 manual</span>
-                    </div>
-                    <div class="model-items-list">
-                      <div class="model-item-row" id="row-claude-haiku">
-                        <div class="model-item-left">
-                          <span class="model-item-name">~anthropic/claude-haiku-latest</span>
-                          <div class="model-badges">
-                            <span class="badge badge-provider">1 provider</span>
-                            <span class="badge badge-type">Text</span>
-                            <span class="badge badge-tool">Tools</span>
-                          </div>
-                        </div>
-                        <div class="model-item-right">
-                          <span class="status-pill inline-calls" id="calls-haiku">0 calls</span>
-                          <span class="status-pill inline-cost" id="cost-haiku">No cost</span>
-                        </div>
-                      </div>
-                      <div class="model-item-row" id="row-claude-opus">
-                        <div class="model-item-left">
-                          <span class="model-item-name">~anthropic/claude-opus-latest</span>
-                          <div class="model-badges">
-                            <span class="badge badge-provider">1 provider</span>
-                            <span class="badge badge-type">Text</span>
-                            <span class="badge badge-tool">Tools</span>
-                            <span class="badge badge-reasoning">Reasoning</span>
-                          </div>
-                        </div>
-                        <div class="model-item-right">
-                          <span class="status-pill inline-calls" id="calls-opus">0 calls</span>
-                          <span class="status-pill inline-cost" id="cost-opus">No cost</span>
-                        </div>
-                      </div>
-                      <div class="model-item-row" id="row-gemini-flash">
-                        <div class="model-item-left">
-                          <span class="model-item-name">~google/gemini-flash-latest</span>
-                          <div class="model-badges">
-                            <span class="badge badge-provider">1 provider</span>
-                            <span class="badge badge-type">Text</span>
-                            <span class="badge badge-tool">Tools</span>
-                          </div>
-                        </div>
-                        <div class="model-item-right">
-                          <span class="status-pill inline-calls" id="calls-gemini">0 calls</span>
-                          <span class="status-pill inline-cost" id="cost-gemini">No cost</span>
-                        </div>
-                      </div>
+                    <div class="prow">
+                      <div class="who"><span class="dot idle"></span><div><div class="nm">provider-e</div><div class="ur">api.provider-e.net/claude</div></div></div>
+                      <div class="pcol"><span class="tag idle" data-i18n="status.notraffic">No traffic</span></div>
+                      <div class="pcol"><span class="lb" data-i18n="status.success">Success</span><span class="vl">—</span></div>
+                      <div class="pcol"><span class="lb" data-i18n="status.latency">Latency</span><span class="vl">—</span></div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Tab 2: Provider Status (Screenshot 2 aligned) -->
-            <div class="dash-tab-content" id="dash-provider-status">
-              <div class="provider-status-mock">
-                <div class="mock-section-header">
-                  <h4>Provider Status</h4>
-                  <p>Aggregated health across all models per provider (7-day window)</p>
-                </div>
-                <div class="provider-rows-container">
-                  <!-- Row 1: provider-a -->
-                  <div class="prov-status-row outage" id="status-row-prov-a">
-                    <div class="prov-info">
-                      <span class="prov-health-icon">✕</span>
-                      <div>
-                        <span class="prov-name">provider-a</span>
-                        <span class="prov-url">https://api.provider-a.net</span>
-                      </div>
-                    </div>
-                    <div class="prov-metrics">
-                      <div class="metric-box"><span class="m-lbl">STATUS</span><span class="m-val stat-outage" id="prov-status-prov-a">Outage</span></div>
-                      <div class="metric-box"><span class="m-lbl">SUCCESS</span><span class="m-val" id="prov-success-prov-a">65.7%</span></div>
-                      <div class="metric-box"><span class="m-lbl">LATENCY</span><span class="m-val" id="prov-latency-prov-a">11691ms</span></div>
-                      <div class="metric-box"><span class="m-lbl">CALLS</span><span class="m-val" id="prov-calls-prov-a">204</span></div>
-                      <span class="expand-arrow">▼</span>
-                    </div>
+          <!-- Row 3: Model directory -->
+          <div class="show-row">
+            <div class="show-text">
+              <span class="kicker" data-i18n="r3.kicker">Model directory</span>
+              <h3 data-i18n="r3.title">One catalog for every model</h3>
+              <p data-i18n="r3.text">Automatically groups models discovered across providers, with capabilities, call counts, and cost — searchable and filterable.</p>
+              <ul class="show-list">
+                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r3.li1">Grouped by name across providers</span></li>
+                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r3.li2">Capability tags: text, tools, reasoning</span></li>
+              </ul>
+            </div>
+            <div class="show-media">
+              <div class="window">
+                <div class="window-bar"><span class="window-dots"><i></i><i></i><i></i></span><span class="window-url">127.0.0.1:3210/models</span></div>
+                <div class="window-body">
+                  <div class="mock-search">
+                    <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
+                    <span data-i18n="r3.search">Search model ID, alias, or provider</span>
                   </div>
-                  <!-- Row 2: provider-b -->
-                  <div class="prov-status-row outage" id="status-row-prov-b">
-                    <div class="prov-info">
-                      <span class="prov-health-icon">✕</span>
-                      <div>
-                        <span class="prov-name">provider-b</span>
-                        <span class="prov-url">https://api.provider-b.net/token/...</span>
+                  <div class="mlist">
+                    <div class="mrow">
+                      <div class="mleft"><div class="mname">~anthropic/claude-opus-latest</div>
+                        <div class="badges"><span class="badge b">1 provider</span><span class="badge" data-i18n="badge.text">Text</span><span class="badge" data-i18n="badge.tools">Tools</span><span class="badge" data-i18n="badge.reasoning">Reasoning</span></div>
                       </div>
+                      <div class="mright"><div class="c1">1,204 <span data-i18n="badge.calls">calls</span></div><div class="c2">$48.10</div></div>
                     </div>
-                    <div class="prov-metrics">
-                      <div class="metric-box"><span class="m-lbl">STATUS</span><span class="m-val stat-outage" id="prov-status-prov-b">Outage</span></div>
-                      <div class="metric-box"><span class="m-lbl">SUCCESS</span><span class="m-val" id="prov-success-prov-b">74.1%</span></div>
-                      <div class="metric-box"><span class="m-lbl">LATENCY</span><span class="m-val" id="prov-latency-prov-b">13288ms</span></div>
-                      <div class="metric-box"><span class="m-lbl">CALLS</span><span class="m-val" id="prov-calls-prov-b">58</span></div>
-                      <span class="expand-arrow">▼</span>
-                    </div>
-                  </div>
-                  <!-- Row 3: provider-c -->
-                  <div class="prov-status-row outage" id="status-row-prov-c">
-                    <div class="prov-info">
-                      <span class="prov-health-icon">✕</span>
-                      <div>
-                        <span class="prov-name">provider-c</span>
-                        <span class="prov-url">https://api.provider-c.net/v1</span>
+                    <div class="mrow">
+                      <div class="mleft"><div class="mname">~deepseek/deepseek-chat</div>
+                        <div class="badges"><span class="badge b">1 provider</span><span class="badge" data-i18n="badge.text">Text</span><span class="badge" data-i18n="badge.tools">Tools</span></div>
                       </div>
+                      <div class="mright"><div class="c1">812 <span data-i18n="badge.calls">calls</span></div><div class="c2">$3.94</div></div>
                     </div>
-                    <div class="prov-metrics">
-                      <div class="metric-box"><span class="m-lbl">STATUS</span><span class="m-val stat-outage" id="prov-status-prov-c">Outage</span></div>
-                      <div class="metric-box"><span class="m-lbl">SUCCESS</span><span class="m-val" id="prov-success-prov-c">68.0%</span></div>
-                      <div class="metric-box"><span class="m-lbl">LATENCY</span><span class="m-val" id="prov-latency-prov-c">15591ms</span></div>
-                      <div class="metric-box"><span class="m-lbl">CALLS</span><span class="m-val" id="prov-calls-prov-c">25</span></div>
-                      <span class="expand-arrow">▼</span>
-                    </div>
-                  </div>
-                  <!-- Row 4: provider-d -->
-                  <div class="prov-status-row degraded" id="status-row-prov-d">
-                    <div class="prov-info">
-                      <span class="prov-health-icon">!</span>
-                      <div>
-                        <span class="prov-name">provider-d</span>
-                        <span class="prov-url">https://api.provider-d.net/v1</span>
+                    <div class="mrow">
+                      <div class="mleft"><div class="mname">~google/gemini-flash-latest</div>
+                        <div class="badges"><span class="badge b">2 providers</span><span class="badge" data-i18n="badge.text">Text</span><span class="badge" data-i18n="badge.tools">Tools</span></div>
                       </div>
-                    </div>
-                    <div class="prov-metrics">
-                      <div class="metric-box"><span class="m-lbl">STATUS</span><span class="m-val stat-degraded" id="prov-status-prov-d">Degraded</span></div>
-                      <div class="metric-box"><span class="m-lbl">SUCCESS</span><span class="m-val" id="prov-success-prov-d">84.5%</span></div>
-                      <div class="metric-box"><span class="m-lbl">LATENCY</span><span class="m-val" id="prov-latency-prov-d">16813ms</span></div>
-                      <div class="metric-box"><span class="m-lbl">CALLS</span><span class="m-val" id="prov-calls-prov-d">155</span></div>
-                      <span class="expand-arrow">▼</span>
-                    </div>
-                  </div>
-                  <!-- Row 5: provider-e -->
-                  <div class="prov-status-row normal" id="status-row-prov-e">
-                    <div class="prov-info">
-                      <span class="prov-health-icon">-</span>
-                      <div>
-                        <span class="prov-name">provider-e</span>
-                        <span class="prov-url">https://api.provider-e.net/claude-aws</span>
-                      </div>
-                    </div>
-                    <div class="prov-metrics">
-                      <div class="metric-box"><span class="m-lbl">STATUS</span><span class="m-val stat-normal" id="prov-status-prov-e">No traffic</span></div>
-                      <div class="metric-box"><span class="m-lbl">SUCCESS</span><span class="m-val" id="prov-success-prov-e">N/A</span></div>
-                      <div class="metric-box"><span class="m-lbl">LATENCY</span><span class="m-val" id="prov-latency-prov-e">N/A</span></div>
-                      <div class="metric-box"><span class="m-lbl">CALLS</span><span class="m-val" id="prov-calls-prov-e">0</span></div>
-                      <span class="expand-arrow">▼</span>
+                      <div class="mright"><div class="c1">402 <span data-i18n="badge.calls">calls</span></div><div class="c2" data-i18n="badge.nocost">No cost</div></div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Tab 3: Usage Analytics (Screenshot 1 aligned) -->
-            <div class="dash-tab-content active" id="dash-usage-analytics">
-              <div class="analytics-mock">
-                <div class="analytics-topbar">
-                  <div class="analytics-tabs">
-                    <span class="an-tab">Overview</span>
-                    <span class="an-tab active">Models</span>
-                  </div>
-                  <div class="analytics-filters">
-                    <span class="an-filter">All</span>
-                    <span class="an-filter">30d</span>
-                    <span class="an-filter">7d</span>
-                    <span class="an-filter active">today</span>
-                  </div>
-                </div>
-                <div class="analytics-totals">
-                  <span class="total-min">0</span>
-                  <span class="total-val" id="analytics-total-tokens">144,474,006</span>
-                </div>
-                
-                <!-- Horizontal bars grid -->
-                <div class="analytics-bars-container">
-                  <div class="an-bar-row">
-                    <span class="an-bar-name">claude-opus-4-7</span>
-                    <div class="an-bar-track"><div class="an-bar-fill" id="bar-fill-opus-7" style="width: 36.4%;"></div></div>
-                    <span class="an-bar-pct" id="bar-pct-opus-7">36.4%</span>
-                  </div>
-                  <div class="an-bar-row">
-                    <span class="an-bar-name">claude-deepseek-v4...</span>
-                    <div class="an-bar-track"><div class="an-bar-fill" id="bar-fill-ds-v4" style="width: 19.8%;"></div></div>
-                    <span class="an-bar-pct" id="bar-pct-ds-v4">19.8%</span>
-                  </div>
-                  <div class="an-bar-row">
-                    <span class="an-bar-name">claude-haiku-4-5-20...</span>
-                    <div class="an-bar-track"><div class="an-bar-fill" id="bar-fill-haiku-20" style="width: 13.2%;"></div></div>
-                    <span class="an-bar-pct" id="bar-pct-haiku-20">13.2%</span>
-                  </div>
-                  <div class="an-bar-row">
-                    <span class="an-bar-name">claude-sonnet-4-6</span>
-                    <div class="an-bar-track"><div class="an-bar-fill" id="bar-fill-sonnet-6" style="width: 10.4%;"></div></div>
-                    <span class="an-bar-pct" id="bar-pct-sonnet-6">10.4%</span>
-                  </div>
-                  <div class="an-bar-row">
-                    <span class="an-bar-name">claude-opus-4-6-thi...</span>
-                    <div class="an-bar-track"><div class="an-bar-fill" id="bar-fill-opus-thi" style="width: 8.3%;"></div></div>
-                    <span class="an-bar-pct" id="bar-pct-opus-thi">8.3%</span>
-                  </div>
-                </div>
+        </div>
+      </div>
+    </section>
 
-                <!-- Token list grid -->
-                <div class="analytics-token-grid">
-                  <div class="token-grid-item">
-                    <div class="token-item-header"><span class="bullet" style="background-color: var(--google-blue);"></span>claude-opus-4-7</div>
-                    <div class="token-item-val" id="token-val-opus-7">863,603 in - 126,028 out</div>
-                  </div>
-                  <div class="token-grid-item">
-                    <div class="token-item-header"><span class="bullet" style="background-color: var(--google-blue);"></span>claude-deepseek-v...</div>
-                    <div class="token-item-val" id="token-val-ds-v4">390,714 in - 102,811 out</div>
-                  </div>
-                  <div class="token-grid-item">
-                    <div class="token-item-header"><span class="bullet" style="background-color: var(--google-blue-light);"></span>claude-haiku-4-5-...</div>
-                    <div class="token-item-val" id="token-val-haiku-20">5,103,289 in - 233,762 out</div>
-                  </div>
-                  <div class="token-grid-item">
-                    <div class="token-item-header"><span class="bullet" style="background-color: var(--google-blue-light);"></span>claude-sonnet-4-6</div>
-                    <div class="token-item-val" id="token-val-sonnet-6">142,445 in - 144,717 out</div>
-                  </div>
-                </div>
-              </div>
+    <!-- ============ FEATURES ============ -->
+    <section id="features" class="section section-soft">
+      <div class="container">
+        <div class="section-head center">
+          <span class="kicker" data-i18n="feat.kicker">Features</span>
+          <h2 data-i18n="feat.title">Built for control and privacy</h2>
+          <p data-i18n="feat.sub">Everything you need to manage AI API usage in one local tool.</p>
+        </div>
+
+        <div class="fgrid">
+          <div class="fcard">
+            <div class="fico"><svg viewBox="0 0 24 24"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg></div>
+            <h3 data-i18n="feat.1.t">Local-first security</h3>
+            <p data-i18n="feat.1.d">Credentials are encrypted in a local vault file. Nothing is stored in the cloud.</p>
+          </div>
+          <div class="fcard">
+            <div class="fico"><svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+            <h3 data-i18n="feat.2.t">Multi-provider proxy</h3>
+            <p data-i18n="feat.2.d">Forwards OpenAI- and Anthropic-compatible requests to any upstream provider.</p>
+          </div>
+          <div class="fcard">
+            <div class="fico"><svg viewBox="0 0 24 24"><path d="M3 13h2v7H3v-7zm4-6h2v13H7V7zm4 3h2v10h-2V10zm4-7h2v17h-2V3zm4 9h2v8h-2v-8z"/></svg></div>
+            <h3 data-i18n="feat.3.t">Token & latency audit</h3>
+            <p data-i18n="feat.3.d">Records status, latency, and input/output tokens for every single call.</p>
+          </div>
+          <div class="fcard">
+            <div class="fico"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93V18h-2v1.93A8 8 0 0 1 4.07 13H6v-2H4.07A8 8 0 0 1 11 4.07V6h2V4.07A8 8 0 0 1 19.93 11H18v2h1.93A8 8 0 0 1 13 19.93z"/></svg></div>
+            <h3 data-i18n="feat.4.t">Balance sync</h3>
+            <p data-i18n="feat.4.d">Custom HTTP polling and JSON-path rules sync provider-reported balances.</p>
+          </div>
+          <div class="fcard">
+            <div class="fico"><svg viewBox="0 0 24 24"><path d="M19.35 10A7.49 7.49 0 0 0 5 8.5 6 6 0 0 0 6 20h13a5 5 0 0 0 .35-10zM14 13v4h-4v-4H7l5-5 5 5z"/></svg></div>
+            <h3 data-i18n="feat.5.t">Cloudflared tunnels</h3>
+            <p data-i18n="feat.5.d">Safely expose your local vault to remote apps through Cloudflare Tunnel.</p>
+          </div>
+          <div class="fcard">
+            <div class="fico"><svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg></div>
+            <h3 data-i18n="feat.6.t">Consolidated metrics</h3>
+            <p data-i18n="feat.6.d">Groups keys by provider for both aggregate and per-key reports.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOW IT WORKS ============ -->
+    <section id="how" class="section">
+      <div class="container">
+        <div class="section-head center">
+          <span class="kicker" data-i18n="how.kicker">How it works</span>
+          <h2 data-i18n="how.title">A local proxy between your apps and the providers</h2>
+          <p data-i18n="how.sub">Point any third-party app at the API Vault Base URL. It injects the real key, forwards the call, and records the result.</p>
+        </div>
+
+        <div class="flow">
+          <div class="flow-node">
+            <div class="ttl" data-i18n="flow.app">Third-party app</div>
+            <div class="sub" data-i18n="flow.app.sub">IDE, agent, or script</div>
+          </div>
+          <div class="flow-arrow"><svg viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5L12 20l8-8-8-8-1.5 1.5L16 11z"/></svg></div>
+          <div class="flow-node mid">
+            <div class="ttl">API Vault</div>
+            <div class="sub" data-i18n="flow.vault.sub">Decrypts key · forwards · records</div>
+            <div class="plist"><span>localhost:3210</span></div>
+          </div>
+          <div class="flow-arrow"><svg viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5L12 20l8-8-8-8-1.5 1.5L16 11z"/></svg></div>
+          <div class="flow-node">
+            <div class="ttl" data-i18n="flow.up">Upstream providers</div>
+            <div class="plist"><span>api.openai.com</span><span>api.anthropic.com</span><span>api.deepseek.com</span></div>
+          </div>
+        </div>
+
+        <div class="flow-url">
+          <span class="lab" data-i18n="flow.url.lab">API Vault Base URL</span>
+          <code>http://127.0.0.1:3210/proxy/provider_abc/v1</code>
+        </div>
+
+        <div class="steps">
+          <div class="step">
+            <div class="num">1</div>
+            <h4 data-i18n="step.1.t">Run locally</h4>
+            <p data-i18n="step.1.d">Start with Docker or the Windows script, then open localhost:3210.</p>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <h4 data-i18n="step.2.t">Add your keys</h4>
+            <p data-i18n="step.2.d">Store API keys in your encrypted local vault file.</p>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <h4 data-i18n="step.3.t">Point apps to API Vault</h4>
+            <p data-i18n="step.3.d">Copy the API Vault Base URL into any third-party app.</p>
+          </div>
+          <div class="step">
+            <div class="num">4</div>
+            <h4 data-i18n="step.4.t">Track everything</h4>
+            <p data-i18n="step.4.d">Calls are forwarded and recorded automatically.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ QUICK START ============ -->
+    <section id="start" class="section section-soft">
+      <div class="container">
+        <div class="section-head center">
+          <span class="kicker" data-i18n="start.kicker">Quick start</span>
+          <h2 data-i18n="start.title">Up and running in two steps</h2>
+          <p data-i18n="start.sub">Choose Docker or the Windows start script. Your data stays on your machine.</p>
+        </div>
+
+        <div style="text-align:center">
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="docker">Docker Compose</button>
+            <button class="tab-btn" data-tab="windows" data-i18n="start.win">Windows script</button>
+          </div>
+        </div>
+
+        <div class="panel active" id="panel-docker">
+          <div class="code">
+            <div class="code-bar">
+              <span>Terminal</span>
+              <button class="copy" data-copy="code-docker"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg><span data-i18n="copy">Copy</span></button>
             </div>
+            <pre id="code-docker"><span class="c-cm"># 1. Clone the repository</span>
+<span class="c-cmd">git clone</span> <span class="c-str">https://github.com/WENGENG-boop/api-vault.git</span>
+<span class="c-cmd">cd</span> api-vault
 
+<span class="c-cm"># 2. Build and start in the background</span>
+<span class="c-cmd">docker compose</span> <span class="c-arg">up -d --build</span>
+
+<span class="c-cm"># 3. Open the dashboard</span>
+<span class="c-cm"># http://localhost:3210</span></pre>
           </div>
         </div>
 
-        <!-- Console logs terminal -->
-        <div class="console-panel">
-          <div class="console-header">
-            <div class="console-dots">
-              <div class="console-dot"></div>
-              <div class="console-dot"></div>
-              <div class="console-dot"></div>
+        <div class="panel" id="panel-windows">
+          <div class="code">
+            <div class="code-bar">
+              <span>start-api-vault.bat</span>
+              <button class="copy" data-copy="code-windows"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg><span data-i18n="copy">Copy</span></button>
             </div>
-            <span>api-vault-proxy.log</span>
-          </div>
-          <div class="console-body" id="console-body">
-            <div class="console-line">
-              <span class="time">17:45:00</span> <span style="color:#61afef">[INFO] [API Vault]</span> Local server started on port 3210.
-            </div>
-            <div class="console-line">
-              <span class="time">17:45:01</span> <span style="color:#61afef">[INFO] [API Vault]</span> Master password verified. Local vault file decrypted successfully.
-            </div>
-            <div class="console-line">
-              <span class="time">17:45:02</span> <span style="color:#61afef">[INFO] [API Vault]</span> Synchronized balances for OpenAI: $120.45 remaining.
-            </div>
-          </div>
-        </div>
+            <pre id="code-windows"><span class="c-cm"># 1. Install Node.js LTS  ->  https://nodejs.org</span>
 
-      </div>
+<span class="c-cm"># 2. Double-click start-api-vault.bat</span>
+<span class="c-cm">#    It installs deps, builds, and launches the server.</span>
 
-    </div>
-  </section>
-
-  <!-- Features Grid Section -->
-  <section id="features" style="background-color: var(--bg-secondary);">
-    <div class="section">
-      <div class="section-header">
-        <h2 class="section-title">Take Control of Your AI Workflow</h2>
-        <p class="section-subtitle">A set of features designed to make AI API management simple, private, and fully auditable.</p>
-      </div>
-
-      <div class="grid-3col">
-        <!-- Feature 1 -->
-        <div class="feature-card card-blue">
-          <div class="feature-icon-wrapper">
-            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
-          </div>
-          <h3 class="feature-card-title">Local-First Security</h3>
-          <p class="feature-card-text">All credentials and tokens are encrypted locally inside <code>.api-vault/vault.json</code>. No data is stored in the cloud.</p>
-        </div>
-
-        <!-- Feature 2 -->
-        <div class="feature-card card-red">
-          <div class="feature-icon-wrapper">
-            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10H7v-2h10v2z"/></svg>
-          </div>
-          <h3 class="feature-card-title">Multi-Provider Proxy</h3>
-          <p class="feature-card-text">Seamlessly forwards OpenAI-compatible and Anthropic-compatible requests to any upstream provider.</p>
-        </div>
-
-        <!-- Feature 3 -->
-        <div class="feature-card card-yellow">
-          <div class="feature-icon-wrapper">
-            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14H7v-2h5v2zm3-4H7v-2h8v2zm0-4H7V7h8v2z"/></svg>
-          </div>
-          <h3 class="feature-card-title">Token &amp; Latency Audits</h3>
-          <p class="feature-card-text">Record latency, status, and input/output tokens in real-time to analyze efficiency and identify bottleneck models.</p>
-        </div>
-
-        <!-- Feature 4 -->
-        <div class="feature-card card-green">
-          <div class="feature-icon-wrapper">
-            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
-          </div>
-          <h3 class="feature-card-title">Custom Balance Sync</h3>
-          <p class="feature-card-text">Configures custom HTTP polling and JSON-path queries to sync provider-reported API balance values automatically.</p>
-        </div>
-
-        <!-- Feature 5 -->
-        <div class="feature-card card-blue">
-          <div class="feature-icon-wrapper">
-            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12.01 21.49L23.64 7c-.45-.34-4.93-4-11.64-4C5.28 3 .81 6.66.36 7l11.63 14.49.01.01.01-.01z"/></svg>
-          </div>
-          <h3 class="feature-card-title">Cloudflared Tunnels</h3>
-          <p class="feature-card-text">Integrate with local Cloudflare Tunnels to safely proxy calls from remote websites and cloud platforms to your local vault.</p>
-        </div>
-
-        <!-- Feature 6 -->
-        <div class="feature-card card-green">
-          <div class="feature-icon-wrapper">
-            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
-          </div>
-          <h3 class="feature-card-title">Consolidated Metrics</h3>
-          <p class="feature-card-text">Automatically groups API keys by provider hostname, giving you aggregated statistics as well as key-level reports.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Architecture & How it works -->
-  <section id="architecture" class="section">
-    <div class="section-header">
-      <h2 class="section-title">How API Vault Operates</h2>
-      <p class="section-subtitle">API Vault acts as a local middleware proxy between third-party applications and the AI platforms.</p>
-    </div>
-
-    <div class="arch-container">
-      <div class="arch-visuals">
-        <!-- SVG diagram illustrating the layout flow -->
-        <svg viewBox="0 0 400 300" style="width: 100%; height: auto; max-width: 380px;">
-          <!-- Node: Apps -->
-          <rect x="20" y="30" width="100" height="50" rx="8" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="2"/>
-          <text x="70" y="60" text-anchor="middle" font-size="12" fill="var(--text-primary)" font-family="var(--font-sans)" font-weight="500">Third-Party App</text>
-          
-          <!-- Node: API Vault -->
-          <rect x="20" y="210" width="100" height="50" rx="8" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="2"/>
-          <text x="70" y="240" text-anchor="middle" font-size="12" fill="var(--text-primary)" font-family="var(--font-sans)" font-weight="500">Local Proxy</text>
-
-          <!-- Node: API Vault core -->
-          <rect x="190" y="120" width="100" height="60" rx="8" fill="var(--google-blue-light)" stroke="var(--google-blue)" stroke-width="2"/>
-          <text x="240" y="150" text-anchor="middle" font-size="13" fill="var(--google-blue)" font-family="var(--font-sans)" font-weight="600">API Vault</text>
-          <text x="240" y="165" text-anchor="middle" font-size="9" fill="var(--text-secondary)" font-family="var(--font-sans)">Decrypts &amp; Audits</text>
-
-          <!-- Node: Upstream -->
-          <rect x="290" y="30" width="90" height="50" rx="8" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="2"/>
-          <text x="335" y="60" text-anchor="middle" font-size="11" fill="var(--text-primary)" font-family="var(--font-sans)" font-weight="500">OpenAI / Claude</text>
-
-          <rect x="290" y="210" width="90" height="50" rx="8" fill="var(--bg-card)" stroke="var(--border-color)" stroke-width="2"/>
-          <text x="335" y="240" text-anchor="middle" font-size="11" fill="var(--text-primary)" font-family="var(--font-sans)" font-weight="500">DeepSeek / etc</text>
-
-          <!-- Arrows connecting -->
-          <!-- App to API Vault -->
-          <path d="M 120 55 L 150 55 L 150 140 L 190 140" fill="none" stroke="var(--text-light)" stroke-dasharray="4 4" stroke-width="1.5"/>
-          <!-- Local Proxy to API Vault -->
-          <path d="M 120 235 L 150 235 L 150 160 L 190 160" fill="none" stroke="var(--text-light)" stroke-dasharray="4 4" stroke-width="1.5"/>
-          
-          <!-- API Vault to Upstreams -->
-          <path d="M 290 150 L 335 150 L 335 90" fill="none" stroke="var(--google-blue)" stroke-width="2" marker-end="url(#arrow)"/>
-          <path d="M 290 150 L 335 150 L 335 200" fill="none" stroke="var(--google-blue)" stroke-width="2" marker-end="url(#arrow)"/>
-          
-          <!-- Defs for arrow marker -->
-          <defs>
-            <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--google-blue)"/>
-            </marker>
-          </defs>
-        </svg>
-      </div>
-
-      <div class="arch-steps">
-        <!-- Step 1 -->
-        <div class="arch-step-item">
-          <div class="step-num">1</div>
-          <div class="step-content">
-            <h3>Start API Vault Locally</h3>
-            <p>Deploy using Docker or launch by double-clicking the Windows start script. Access the dashboard at <code>localhost:3210</code>.</p>
-          </div>
-        </div>
-
-        <!-- Step 2 -->
-        <div class="arch-step-item">
-          <div class="step-num">2</div>
-          <div class="step-content">
-            <h3>Import API Keys</h3>
-            <p>Save your API keys securely. They will reside in your local vault file and are decrypted on demand.</p>
-          </div>
-        </div>
-
-        <!-- Step 3 -->
-        <div class="arch-step-item">
-          <div class="step-num">3</div>
-          <div class="step-content">
-            <h3>Configure Third-Party Apps</h3>
-            <p>Copy the generated API Vault Base URL and paste it as the custom Endpoint/Base URL in your third-party application.</p>
-          </div>
-        </div>
-
-        <!-- Step 4 -->
-        <div class="arch-step-item">
-          <div class="step-num">4</div>
-          <div class="step-content">
-            <h3>Track &amp; Audit Live Traffic</h3>
-            <p>Make model calls as usual. API Vault automatically handles key management, relays downstream tokens, and updates statistics.</p>
+<span class="c-cm"># 3. Open the dashboard</span>
+<span class="c-cm"># http://127.0.0.1:3210</span></pre>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Quick Start Section -->
-  <section id="quick-start" style="background-color: var(--bg-secondary);">
-    <div class="section">
-      <div class="section-header">
-        <h2 class="section-title">Quick Start</h2>
-        <p class="section-subtitle">Set up API Vault on your machine in just a couple of steps.</p>
-      </div>
-
-      <!-- Installation Tabs -->
-      <div class="setup-tabs">
-        <button class="tab-btn active" data-tab="docker">Docker Compose</button>
-        <button class="tab-btn" data-tab="windows">Windows Start Script</button>
-      </div>
-
-      <!-- Docker Panel -->
-      <div class="setup-panel active" id="docker-panel">
-        <div class="code-box">
-          <div class="code-box-header">
-            <span>Terminal</span>
-            <button class="copy-btn" data-code-id="code-docker">
-              <svg class="svg-icon" viewBox="0 0 24 24" style="fill: currentColor; width: 14px; height: 14px;"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-              Copy
-            </button>
-          </div>
-          <div class="code-box-content">
-            <pre id="code-docker"><span class="comment"># 1. Clone this repository</span>
-<span class="command">git clone</span> <span class="string">https://github.com/WENGENG-boop/api-vault.git</span>
-<span class="command">cd</span> <span class="string">api-vault</span>
-
-<span class="comment"># 2. Build and start API Vault container in the background</span>
-<span class="command">docker compose</span> <span class="parameter">up</span> <span class="parameter">-d</span> <span class="parameter">--build</span>
-
-<span class="comment"># 3. Open the dashboard in your web browser</span>
-<span class="comment"># http://localhost:3210</span></pre>
+    <!-- ============ CTA ============ -->
+    <section class="section cta">
+      <div class="container">
+        <div class="cta-card">
+          <h2 data-i18n="cta.title">Keep your keys. Keep your data.</h2>
+          <p data-i18n="cta.text">API Vault gives you full visibility into AI API usage and cost — locally, without exposing your credentials to the cloud.</p>
+          <div class="hero-ctas">
+            <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" class="btn btn-primary" data-i18n="cta.btn">Get it on GitHub</a>
+            <a href="#start" class="btn btn-outline" data-i18n="cta.btn2">Read the quick start</a>
           </div>
         </div>
       </div>
+    </section>
 
-      <!-- Windows Script Panel -->
-      <div class="setup-panel" id="windows-panel">
-        <div class="code-box">
-          <div class="code-box-header">
-            <span>PowerShell / Command Prompt</span>
-            <button class="copy-btn" data-code-id="code-windows">
-              <svg class="svg-icon" viewBox="0 0 24 24" style="fill: currentColor; width: 14px; height: 14px;"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-              Copy
-            </button>
-          </div>
-          <div class="code-box-content">
-            <pre id="code-windows"><span class="comment"># 1. Ensure you have Node.js LTS installed (https://nodejs.org)</span>
+  </main>
 
-<span class="comment"># 2. Double-click the file "start-api-vault.bat" in the project directory</span>
-<span class="comment"># The script automatically installs dependencies, builds, and launches the server.</span>
-
-<span class="comment"># 3. Access locally:</span>
-<span class="comment"># http://127.0.0.1:3210</span></pre>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- CTA Banner -->
-  <section class="cta-banner">
-    <h2>Take Control of Your AI Cost</h2>
-    <p>API Vault gives you deep insights, request logs, and cost analytics locally without exposing your personal API credentials to the cloud.</p>
-    <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" class="btn btn-primary">
-      <svg class="svg-icon" viewBox="0 0 24 24">
-        <path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"/>
-      </svg>
-      View on GitHub
-    </a>
-  </section>
-
-  <!-- Footer -->
+  <!-- ============ FOOTER ============ -->
   <footer class="footer">
-    <div class="footer-content">
-      <div class="nav-logo">
-        <div class="logo-icon">AV</div>
-        <span>API Vault</span>
+    <div class="container">
+      <div class="footer-top">
+        <div>
+          <a href="#top" class="brand"><span class="mark">AV</span> API Vault</a>
+          <p class="footer-tag" data-i18n="footer.tag">Local-first AI API proxy and usage dashboard. Open source, MIT licensed.</p>
+        </div>
+        <div class="fcol">
+          <h5 data-i18n="footer.product">Product</h5>
+          <a href="#product" data-i18n="nav.product">Product</a>
+          <a href="#features" data-i18n="nav.features">Features</a>
+          <a href="#how" data-i18n="nav.how">How it works</a>
+        </div>
+        <div class="fcol">
+          <h5 data-i18n="footer.resources">Resources</h5>
+          <a href="#start" data-i18n="nav.start">Quick start</a>
+          <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/WENGENG-boop/api-vault/blob/main/README.md" target="_blank" rel="noopener" data-i18n="footer.readme">Documentation</a>
+        </div>
+        <div class="fcol">
+          <h5 data-i18n="footer.start">Get started</h5>
+          <a href="#start" data-i18n="footer.docker">Docker Compose</a>
+          <a href="#start" data-i18n="footer.windows">Windows script</a>
+        </div>
       </div>
-      <div class="footer-links">
-        <a href="#sandbox">Sandbox</a>
-        <a href="#features">Features</a>
-        <a href="#architecture">Architecture</a>
-        <a href="#quick-start">Quick Start</a>
+      <div class="footer-bottom">
+        <p>© 2026 API Vault · <span data-i18n="footer.license">MIT License</span></p>
+        <div class="links">
+          <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener">GitHub</a>
+          <a href="#top" data-i18n="footer.totop">Back to top</a>
+        </div>
       </div>
-    </div>
-    <div class="footer-copy">
-      &copy; 2026 API Vault. Licensed under the MIT License. Built for secure AI proxy management.
     </div>
   </footer>
 
