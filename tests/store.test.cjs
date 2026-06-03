@@ -32,20 +32,20 @@ function usageEvent(index, startedAt) {
   };
 }
 
-test("store keeps recent 1000 usage events and rolls older calls into week and month buckets", () => {
+test("store keeps recent 10000 usage events and rolls older calls into week and month buckets", () => {
   const { dir, file } = tempVaultPath("api-vault-store-rollup-");
   try {
     const store = new VaultStore(file);
     store.setup("test-password-123");
 
-    for (let index = 0; index < 1005; index += 1) {
+    for (let index = 0; index < 10005; index += 1) {
       const startedAt = new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString();
       store.appendUsage(usageEvent(index, startedAt));
     }
 
     const state = store.getState();
-    assert.equal(state.usageEvents.length, 1000);
-    assert.equal(state.totals.totalCalls, 1005);
+    assert.equal(state.usageEvents.length, 10000);
+    assert.equal(state.totals.totalCalls, 10005);
     assert.equal(state.usageRollups.filter((rollup) => rollup.period === "week").reduce((sum, item) => sum + item.calls, 0), 5);
     assert.equal(state.usageRollups.filter((rollup) => rollup.period === "month").reduce((sum, item) => sum + item.calls, 0), 5);
     assert.equal(state.usageRollups.filter((rollup) => rollup.period === "month").reduce((sum, item) => sum + item.totalTokens, 0), 75);

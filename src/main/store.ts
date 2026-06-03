@@ -225,7 +225,7 @@ class JsonFileStorageAdapter implements StorageAdapter {
   }
 }
 
-const RECENT_USAGE_LIMIT = 1000;
+const RECENT_USAGE_LIMIT = 10000;
 const BALANCE_SNAPSHOT_LIMIT = 1000;
 // 7 days of hourly-averaged connection latency buckets.
 const LATENCY_HISTORY_HOURS = 7 * 24;

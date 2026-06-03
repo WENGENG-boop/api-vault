@@ -55,11 +55,14 @@ export function extractUsageFromResponse(
   }
 
   const root = response as Record<string, unknown>;
-  const usage = root.usage && typeof root.usage === "object"
-    ? (root.usage as Record<string, unknown>)
+  const host = usageHost(root) ?? root;
+  const usage = host.usage && typeof host.usage === "object"
+    ? (host.usage as Record<string, unknown>)
     : {};
 
-  const responseModel = typeof root.model === "string" ? root.model : undefined;
+  const responseModel = typeof host.model === "string"
+    ? host.model
+    : (typeof root.model === "string" ? root.model : undefined);
   const costPath = responseCostPath?.trim();
   const configuredCost = costPath ? readNumberPath(response, costPath) : undefined;
   const defaultCost = configuredCost ?? readFirstNumber(response, [
@@ -98,9 +101,14 @@ export function extractUsageFromResponse(
   const promptDetails = usage.prompt_tokens_details && typeof usage.prompt_tokens_details === "object"
     ? (usage.prompt_tokens_details as Record<string, unknown>)
     : {};
+  // The OpenAI Responses API reports cached tokens under input_tokens_details
+  // instead of prompt_tokens_details.
+  const inputDetails = usage.input_tokens_details && typeof usage.input_tokens_details === "object"
+    ? (usage.input_tokens_details as Record<string, unknown>)
+    : {};
   const inputTokens = numberValue(usage.prompt_tokens ?? usage.input_tokens);
   const outputTokens = numberValue(usage.completion_tokens ?? usage.output_tokens);
-  const cachedInputTokens = numberValue(promptDetails.cached_tokens ?? usage.cached_tokens);
+  const cachedInputTokens = numberValue(promptDetails.cached_tokens ?? inputDetails.cached_tokens ?? usage.cached_tokens);
   const totalTokens = numberValue(usage.total_tokens) ?? sumDefined(inputTokens, outputTokens);
 
   return {
@@ -169,8 +177,9 @@ export function extractUsageFromSSE(
     if (payload === "[DONE]") continue;
     try {
       const parsed = JSON.parse(payload) as Record<string, unknown>;
-      if (parsed.usage && typeof parsed.usage === "object") {
-        usageJson = parsed;
+      const carrier = usageHost(parsed);
+      if (carrier) {
+        usageJson = carrier;
         break;
       }
     } catch {}
@@ -182,6 +191,21 @@ export function extractUsageFromSSE(
 
   const responseBuffer = Buffer.from(JSON.stringify(usageJson), "utf8");
   return extractUsageFromResponse(protocol, requestBody, responseBuffer, responseCostPath);
+}
+
+// Returns the object that directly holds a `usage` field. Supports both the
+// chat/completions shape (`{ usage }`) and the OpenAI Responses API streaming
+// shape, where the terminal `response.completed` event nests it as
+// `{ response: { usage } }`. Without this, Responses API (Codex / GPT-5) traffic
+// records 0 input/output tokens.
+function usageHost(parsed: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (parsed.usage && typeof parsed.usage === "object") return parsed;
+  const response = parsed.response;
+  if (response && typeof response === "object") {
+    const inner = response as Record<string, unknown>;
+    if (inner.usage && typeof inner.usage === "object") return inner;
+  }
+  return undefined;
 }
 
 function numberValue(value: unknown): number | undefined {
