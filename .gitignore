@@ -13,4 +13,6 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .claude/worktrees/
-.claude/worktrees/
+
+# Scratch design references (not app assets)
+vault-redesign-auth.png
