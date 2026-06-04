@@ -3,453 +3,262 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>API Vault — Local AI API proxy, key manager & usage dashboard</title>
-  <meta name="description" content="API Vault is an open-source, local-first proxy and dashboard for managing AI API keys, forwarding OpenAI- and Anthropic-compatible requests, and tracking every token, cost, and latency — without sending data to the cloud." />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <title>API Vault - One local control plane for every AI API</title>
+  <meta name="description" content="Store AI API keys locally, route compatible requests, and understand usage across every provider with API Vault." />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-
-  <!-- ============ NAV ============ -->
-  <nav class="nav" id="nav">
-    <div class="container nav-inner">
-      <a href="#top" class="brand"><span class="mark">AV</span> API Vault</a>
-
-      <div class="nav-links" id="navLinks">
-        <a href="#product" data-i18n="nav.product">Product</a>
-        <a href="#features" data-i18n="nav.features">Features</a>
-        <a href="#how" data-i18n="nav.how">How it works</a>
-        <a href="#start" data-i18n="nav.start">Quick start</a>
-      </div>
-
-      <div class="nav-right">
-        <div class="lang" id="lang" role="group" aria-label="Language">
-          <button data-lang="en">EN</button>
-          <button data-lang="zh">中</button>
-        </div>
-        <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" class="btn btn-outline btn-sm">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.07 2.91.83.1-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5A10 10 0 0 0 12 2z"/></svg>
-          GitHub
+  <div class="site-shell">
+    <nav class="site-nav" id="siteNav" aria-label="Main navigation">
+      <div class="site-container nav-inner">
+        <a class="brand" href="#top" aria-label="API Vault home">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span>API Vault</span>
         </a>
-        <button class="nav-toggle" id="navToggle" aria-label="Menu">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
-        </button>
-      </div>
-    </div>
-  </nav>
 
-  <main id="top">
-
-    <!-- ============ HERO ============ -->
-    <header class="hero">
-      <div class="container">
-        <span class="eyebrow reveal" data-i18n="hero.badge">Local-first · Open source</span>
-        <h1 class="reveal" style="animation-delay:.05s" data-i18n-html="hero.title">
-          Every AI API key, request, and token — in one <span class="accent">local vault</span>.
-        </h1>
-        <p class="lede reveal" style="animation-delay:.1s" data-i18n="hero.lede">
-          API Vault is an open-source, local-first proxy and dashboard. It encrypts your API keys on your own machine, forwards OpenAI- and Anthropic-compatible requests, and records every token, cost, and latency — without sending anything to the cloud.
-        </p>
-        <div class="hero-ctas reveal" style="animation-delay:.15s">
-          <a href="#start" class="btn btn-primary" data-i18n="hero.cta1">Get started</a>
-          <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" class="btn btn-outline" data-i18n="hero.cta2">View on GitHub</a>
-        </div>
-        <p class="hero-note reveal" style="animation-delay:.2s">
-          <span data-i18n="hero.note1">Runs locally at</span> <code>localhost:3210</code> ·
-          <span data-i18n="hero.note2">Docker or one-click Windows start</span>
-        </p>
-      </div>
-
-      <!-- Hero product shot: Usage analytics -->
-      <div class="container hero-shot reveal" style="animation-delay:.25s">
-        <div class="window">
-          <div class="window-bar">
-            <span class="window-dots"><i></i><i></i><i></i></span>
-            <span class="window-url">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zM9 6a3 3 0 0 1 6 0v2H9V6z"/></svg>
-              127.0.0.1:3210
-            </span>
-          </div>
-          <div class="window-body">
-            <div class="mock-tabs">
-              <span data-i18n="shot.tab.overview">Overview</span>
-              <span class="on" data-i18n="shot.tab.models">Models</span>
-            </div>
-            <div class="mock-row">
-              <div class="mock-total">144,474,006 <small data-i18n="shot.tokens">tokens · today</small></div>
-              <div class="chips">
-                <span class="chip" data-i18n="shot.range.all">All</span>
-                <span class="chip" data-i18n="shot.range.30">30d</span>
-                <span class="chip" data-i18n="shot.range.7">7d</span>
-                <span class="chip on" data-i18n="shot.range.today">Today</span>
-              </div>
-            </div>
-            <div class="bars">
-              <div class="bar"><span class="nm">claude-opus-4-7</span><span class="track"><span class="fill" style="width:88%"></span></span><span class="pct">36.4%</span></div>
-              <div class="bar"><span class="nm">deepseek-v4</span><span class="track"><span class="fill l2" style="width:52%"></span></span><span class="pct">19.8%</span></div>
-              <div class="bar"><span class="nm">claude-haiku-4-5</span><span class="track"><span class="fill l3" style="width:36%"></span></span><span class="pct">13.2%</span></div>
-              <div class="bar"><span class="nm">claude-sonnet-4-6</span><span class="track"><span class="fill l4" style="width:28%"></span></span><span class="pct">10.4%</span></div>
-              <div class="bar"><span class="nm">gemini-flash</span><span class="track"><span class="fill l5" style="width:22%"></span></span><span class="pct">8.3%</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <!-- ============ COMPAT STRIP ============ -->
-    <section class="compat">
-      <div class="container compat-inner">
-        <span class="compat-label" data-i18n="compat.label">Works with</span>
-        <div class="compat-list">
-          <span>OpenAI</span><span>Anthropic</span><span>DeepSeek</span><span>OpenRouter</span><span>Gemini</span>
-          <span data-i18n="compat.more">+ any compatible API</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ PRODUCT SHOWCASE ============ -->
-    <section id="product" class="section">
-      <div class="container">
-        <div class="section-head">
-          <span class="kicker" data-i18n="product.kicker">The dashboard</span>
-          <h2 data-i18n="product.title">A clear view of every call that passes through</h2>
-          <p data-i18n="product.sub">API Vault records each request locally and turns it into usage, health, and model insights you can act on.</p>
-        </div>
-
-        <div class="showcase">
-
-          <!-- Row 1: Usage analytics -->
-          <div class="show-row">
-            <div class="show-text">
-              <span class="kicker" data-i18n="r1.kicker">Usage analytics</span>
-              <h3 data-i18n="r1.title">See exactly where your tokens go</h3>
-              <p data-i18n="r1.text">Per-model breakdowns of input and output tokens, request counts, and cost. Filter by today, 7 days, 30 days, or all time.</p>
-              <ul class="show-list">
-                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r1.li1">Input / output token split per model</span></li>
-                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r1.li2">Request counts and success ratio</span></li>
-                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r1.li3">Cost when the provider reports it</span></li>
-              </ul>
-            </div>
-            <div class="show-media">
-              <div class="window">
-                <div class="window-bar"><span class="window-dots"><i></i><i></i><i></i></span><span class="window-url">127.0.0.1:3210/usage</span></div>
-                <div class="window-body">
-                  <div class="mock-row">
-                    <div class="mock-total">2,418 <small data-i18n="r1.calls">calls · today</small></div>
-                    <div class="chips"><span class="chip on">Today</span><span class="chip">7d</span><span class="chip">30d</span></div>
-                  </div>
-                  <div class="bars">
-                    <div class="bar"><span class="nm">claude-opus-4-7</span><span class="track"><span class="fill" style="width:82%"></span></span><span class="pct">36.4%</span></div>
-                    <div class="bar"><span class="nm">deepseek-v4</span><span class="track"><span class="fill l2" style="width:48%"></span></span><span class="pct">19.8%</span></div>
-                    <div class="bar"><span class="nm">claude-haiku-4-5</span><span class="track"><span class="fill l3" style="width:34%"></span></span><span class="pct">13.2%</span></div>
-                    <div class="bar"><span class="nm">claude-sonnet-4-6</span><span class="track"><span class="fill l4" style="width:26%"></span></span><span class="pct">10.4%</span></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Row 2: Provider status -->
-          <div class="show-row flip">
-            <div class="show-text">
-              <span class="kicker" data-i18n="r2.kicker">Provider status</span>
-              <h3 data-i18n="r2.title">Know which providers are healthy</h3>
-              <p data-i18n="r2.text">Aggregated success rate, latency, and call volume per provider over a rolling window, so you can spot outages and degradations early.</p>
-              <ul class="show-list">
-                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r2.li1">Healthy / degraded / outage at a glance</span></li>
-                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r2.li2">Rolling 7-day success and latency</span></li>
-              </ul>
-            </div>
-            <div class="show-media">
-              <div class="window">
-                <div class="window-bar"><span class="window-dots"><i></i><i></i><i></i></span><span class="window-url">127.0.0.1:3210/status</span></div>
-                <div class="window-body">
-                  <div class="pstatus">
-                    <div class="prow">
-                      <div class="who"><span class="dot bad"></span><div><div class="nm">provider-a</div><div class="ur">api.provider-a.net</div></div></div>
-                      <div class="pcol"><span class="tag bad" data-i18n="status.outage">Outage</span></div>
-                      <div class="pcol"><span class="lb" data-i18n="status.success">Success</span><span class="vl">65.7%</span></div>
-                      <div class="pcol"><span class="lb" data-i18n="status.latency">Latency</span><span class="vl">11,691ms</span></div>
-                    </div>
-                    <div class="prow">
-                      <div class="who"><span class="dot warn"></span><div><div class="nm">provider-d</div><div class="ur">api.provider-d.net/v1</div></div></div>
-                      <div class="pcol"><span class="tag warn" data-i18n="status.degraded">Degraded</span></div>
-                      <div class="pcol"><span class="lb" data-i18n="status.success">Success</span><span class="vl">84.5%</span></div>
-                      <div class="pcol"><span class="lb" data-i18n="status.latency">Latency</span><span class="vl">1,683ms</span></div>
-                    </div>
-                    <div class="prow">
-                      <div class="who"><span class="dot ok"></span><div><div class="nm">provider-f</div><div class="ur">api.provider-f.com/v1</div></div></div>
-                      <div class="pcol"><span class="tag ok" data-i18n="status.healthy">Healthy</span></div>
-                      <div class="pcol"><span class="lb" data-i18n="status.success">Success</span><span class="vl">99.2%</span></div>
-                      <div class="pcol"><span class="lb" data-i18n="status.latency">Latency</span><span class="vl">612ms</span></div>
-                    </div>
-                    <div class="prow">
-                      <div class="who"><span class="dot idle"></span><div><div class="nm">provider-e</div><div class="ur">api.provider-e.net/claude</div></div></div>
-                      <div class="pcol"><span class="tag idle" data-i18n="status.notraffic">No traffic</span></div>
-                      <div class="pcol"><span class="lb" data-i18n="status.success">Success</span><span class="vl">—</span></div>
-                      <div class="pcol"><span class="lb" data-i18n="status.latency">Latency</span><span class="vl">—</span></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Row 3: Model directory -->
-          <div class="show-row">
-            <div class="show-text">
-              <span class="kicker" data-i18n="r3.kicker">Model directory</span>
-              <h3 data-i18n="r3.title">One catalog for every model</h3>
-              <p data-i18n="r3.text">Automatically groups models discovered across providers, with capabilities, call counts, and cost — searchable and filterable.</p>
-              <ul class="show-list">
-                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r3.li1">Grouped by name across providers</span></li>
-                <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg><span data-i18n="r3.li2">Capability tags: text, tools, reasoning</span></li>
-              </ul>
-            </div>
-            <div class="show-media">
-              <div class="window">
-                <div class="window-bar"><span class="window-dots"><i></i><i></i><i></i></span><span class="window-url">127.0.0.1:3210/models</span></div>
-                <div class="window-body">
-                  <div class="mock-search">
-                    <svg viewBox="0 0 24 24"><path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/></svg>
-                    <span data-i18n="r3.search">Search model ID, alias, or provider</span>
-                  </div>
-                  <div class="mlist">
-                    <div class="mrow">
-                      <div class="mleft"><div class="mname">~anthropic/claude-opus-latest</div>
-                        <div class="badges"><span class="badge b">1 provider</span><span class="badge" data-i18n="badge.text">Text</span><span class="badge" data-i18n="badge.tools">Tools</span><span class="badge" data-i18n="badge.reasoning">Reasoning</span></div>
-                      </div>
-                      <div class="mright"><div class="c1">1,204 <span data-i18n="badge.calls">calls</span></div><div class="c2">$48.10</div></div>
-                    </div>
-                    <div class="mrow">
-                      <div class="mleft"><div class="mname">~deepseek/deepseek-chat</div>
-                        <div class="badges"><span class="badge b">1 provider</span><span class="badge" data-i18n="badge.text">Text</span><span class="badge" data-i18n="badge.tools">Tools</span></div>
-                      </div>
-                      <div class="mright"><div class="c1">812 <span data-i18n="badge.calls">calls</span></div><div class="c2">$3.94</div></div>
-                    </div>
-                    <div class="mrow">
-                      <div class="mleft"><div class="mname">~google/gemini-flash-latest</div>
-                        <div class="badges"><span class="badge b">2 providers</span><span class="badge" data-i18n="badge.text">Text</span><span class="badge" data-i18n="badge.tools">Tools</span></div>
-                      </div>
-                      <div class="mright"><div class="c1">402 <span data-i18n="badge.calls">calls</span></div><div class="c2" data-i18n="badge.nocost">No cost</div></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ FEATURES ============ -->
-    <section id="features" class="section section-soft">
-      <div class="container">
-        <div class="section-head center">
-          <span class="kicker" data-i18n="feat.kicker">Features</span>
-          <h2 data-i18n="feat.title">Built for control and privacy</h2>
-          <p data-i18n="feat.sub">Everything you need to manage AI API usage in one local tool.</p>
-        </div>
-
-        <div class="fgrid">
-          <div class="fcard">
-            <div class="fico"><svg viewBox="0 0 24 24"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg></div>
-            <h3 data-i18n="feat.1.t">Local-first security</h3>
-            <p data-i18n="feat.1.d">Credentials are encrypted in a local vault file. Nothing is stored in the cloud.</p>
-          </div>
-          <div class="fcard">
-            <div class="fico"><svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-            <h3 data-i18n="feat.2.t">Multi-provider proxy</h3>
-            <p data-i18n="feat.2.d">Forwards OpenAI- and Anthropic-compatible requests to any upstream provider.</p>
-          </div>
-          <div class="fcard">
-            <div class="fico"><svg viewBox="0 0 24 24"><path d="M3 13h2v7H3v-7zm4-6h2v13H7V7zm4 3h2v10h-2V10zm4-7h2v17h-2V3zm4 9h2v8h-2v-8z"/></svg></div>
-            <h3 data-i18n="feat.3.t">Token & latency audit</h3>
-            <p data-i18n="feat.3.d">Records status, latency, and input/output tokens for every single call.</p>
-          </div>
-          <div class="fcard">
-            <div class="fico"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 17.93V18h-2v1.93A8 8 0 0 1 4.07 13H6v-2H4.07A8 8 0 0 1 11 4.07V6h2V4.07A8 8 0 0 1 19.93 11H18v2h1.93A8 8 0 0 1 13 19.93z"/></svg></div>
-            <h3 data-i18n="feat.4.t">Balance sync</h3>
-            <p data-i18n="feat.4.d">Custom HTTP polling and JSON-path rules sync provider-reported balances.</p>
-          </div>
-          <div class="fcard">
-            <div class="fico"><svg viewBox="0 0 24 24"><path d="M19.35 10A7.49 7.49 0 0 0 5 8.5 6 6 0 0 0 6 20h13a5 5 0 0 0 .35-10zM14 13v4h-4v-4H7l5-5 5 5z"/></svg></div>
-            <h3 data-i18n="feat.5.t">Cloudflared tunnels</h3>
-            <p data-i18n="feat.5.d">Safely expose your local vault to remote apps through Cloudflare Tunnel.</p>
-          </div>
-          <div class="fcard">
-            <div class="fico"><svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg></div>
-            <h3 data-i18n="feat.6.t">Consolidated metrics</h3>
-            <p data-i18n="feat.6.d">Groups keys by provider for both aggregate and per-key reports.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ HOW IT WORKS ============ -->
-    <section id="how" class="section">
-      <div class="container">
-        <div class="section-head center">
-          <span class="kicker" data-i18n="how.kicker">How it works</span>
-          <h2 data-i18n="how.title">A local proxy between your apps and the providers</h2>
-          <p data-i18n="how.sub">Point any third-party app at the API Vault Base URL. It injects the real key, forwards the call, and records the result.</p>
-        </div>
-
-        <div class="flow">
-          <div class="flow-node">
-            <div class="ttl" data-i18n="flow.app">Third-party app</div>
-            <div class="sub" data-i18n="flow.app.sub">IDE, agent, or script</div>
-          </div>
-          <div class="flow-arrow"><svg viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5L12 20l8-8-8-8-1.5 1.5L16 11z"/></svg></div>
-          <div class="flow-node mid">
-            <div class="ttl">API Vault</div>
-            <div class="sub" data-i18n="flow.vault.sub">Decrypts key · forwards · records</div>
-            <div class="plist"><span>localhost:3210</span></div>
-          </div>
-          <div class="flow-arrow"><svg viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5L12 20l8-8-8-8-1.5 1.5L16 11z"/></svg></div>
-          <div class="flow-node">
-            <div class="ttl" data-i18n="flow.up">Upstream providers</div>
-            <div class="plist"><span>api.openai.com</span><span>api.anthropic.com</span><span>api.deepseek.com</span></div>
-          </div>
-        </div>
-
-        <div class="flow-url">
-          <span class="lab" data-i18n="flow.url.lab">API Vault Base URL</span>
-          <code>http://127.0.0.1:3210/proxy/provider_abc/v1</code>
-        </div>
-
-        <div class="steps">
-          <div class="step">
-            <div class="num">1</div>
-            <h4 data-i18n="step.1.t">Run locally</h4>
-            <p data-i18n="step.1.d">Start with Docker or the Windows script, then open localhost:3210.</p>
-          </div>
-          <div class="step">
-            <div class="num">2</div>
-            <h4 data-i18n="step.2.t">Add your keys</h4>
-            <p data-i18n="step.2.d">Store API keys in your encrypted local vault file.</p>
-          </div>
-          <div class="step">
-            <div class="num">3</div>
-            <h4 data-i18n="step.3.t">Point apps to API Vault</h4>
-            <p data-i18n="step.3.d">Copy the API Vault Base URL into any third-party app.</p>
-          </div>
-          <div class="step">
-            <div class="num">4</div>
-            <h4 data-i18n="step.4.t">Track everything</h4>
-            <p data-i18n="step.4.d">Calls are forwarded and recorded automatically.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ QUICK START ============ -->
-    <section id="start" class="section section-soft">
-      <div class="container">
-        <div class="section-head center">
-          <span class="kicker" data-i18n="start.kicker">Quick start</span>
-          <h2 data-i18n="start.title">Up and running in two steps</h2>
-          <p data-i18n="start.sub">Choose Docker or the Windows start script. Your data stays on your machine.</p>
-        </div>
-
-        <div style="text-align:center">
-          <div class="tabs">
-            <button class="tab-btn active" data-tab="docker">Docker Compose</button>
-            <button class="tab-btn" data-tab="windows" data-i18n="start.win">Windows script</button>
-          </div>
-        </div>
-
-        <div class="panel active" id="panel-docker">
-          <div class="code">
-            <div class="code-bar">
-              <span>Terminal</span>
-              <button class="copy" data-copy="code-docker"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg><span data-i18n="copy">Copy</span></button>
-            </div>
-            <pre id="code-docker"><span class="c-cm"># 1. Clone the repository</span>
-<span class="c-cmd">git clone</span> <span class="c-str">https://github.com/WENGENG-boop/api-vault.git</span>
-<span class="c-cmd">cd</span> api-vault
-
-<span class="c-cm"># 2. Build and start in the background</span>
-<span class="c-cmd">docker compose</span> <span class="c-arg">up -d --build</span>
-
-<span class="c-cm"># 3. Open the dashboard</span>
-<span class="c-cm"># http://localhost:3210</span></pre>
-          </div>
-        </div>
-
-        <div class="panel" id="panel-windows">
-          <div class="code">
-            <div class="code-bar">
-              <span>start-api-vault.bat</span>
-              <button class="copy" data-copy="code-windows"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg><span data-i18n="copy">Copy</span></button>
-            </div>
-            <pre id="code-windows"><span class="c-cm"># 1. Install Node.js LTS  ->  https://nodejs.org</span>
-
-<span class="c-cm"># 2. Double-click start-api-vault.bat</span>
-<span class="c-cm">#    It installs deps, builds, and launches the server.</span>
-
-<span class="c-cm"># 3. Open the dashboard</span>
-<span class="c-cm"># http://127.0.0.1:3210</span></pre>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ CTA ============ -->
-    <section class="section cta">
-      <div class="container">
-        <div class="cta-card">
-          <h2 data-i18n="cta.title">Keep your keys. Keep your data.</h2>
-          <p data-i18n="cta.text">API Vault gives you full visibility into AI API usage and cost — locally, without exposing your credentials to the cloud.</p>
-          <div class="hero-ctas">
-            <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" class="btn btn-primary" data-i18n="cta.btn">Get it on GitHub</a>
-            <a href="#start" class="btn btn-outline" data-i18n="cta.btn2">Read the quick start</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- ============ FOOTER ============ -->
-  <footer class="footer">
-    <div class="container">
-      <div class="footer-top">
-        <div>
-          <a href="#top" class="brand"><span class="mark">AV</span> API Vault</a>
-          <p class="footer-tag" data-i18n="footer.tag">Local-first AI API proxy and usage dashboard. Open source, MIT licensed.</p>
-        </div>
-        <div class="fcol">
-          <h5 data-i18n="footer.product">Product</h5>
-          <a href="#product" data-i18n="nav.product">Product</a>
+        <div class="nav-links" id="navLinks">
+          <a href="#workflow" data-i18n="nav.workflow">How it works</a>
           <a href="#features" data-i18n="nav.features">Features</a>
-          <a href="#how" data-i18n="nav.how">How it works</a>
+          <a href="#start" data-i18n="nav.start">Quick Start</a>
+          <a href="#faq" data-i18n="nav.faq">FAQ</a>
         </div>
-        <div class="fcol">
-          <h5 data-i18n="footer.resources">Resources</h5>
-          <a href="#start" data-i18n="nav.start">Quick start</a>
-          <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://github.com/WENGENG-boop/api-vault/blob/main/README.md" target="_blank" rel="noopener" data-i18n="footer.readme">Documentation</a>
-        </div>
-        <div class="fcol">
-          <h5 data-i18n="footer.start">Get started</h5>
-          <a href="#start" data-i18n="footer.docker">Docker Compose</a>
-          <a href="#start" data-i18n="footer.windows">Windows script</a>
-        </div>
-      </div>
-      <div class="footer-bottom">
-        <p>© 2026 API Vault · <span data-i18n="footer.license">MIT License</span></p>
-        <div class="links">
-          <a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener">GitHub</a>
-          <a href="#top" data-i18n="footer.totop">Back to top</a>
-        </div>
-      </div>
-    </div>
-  </footer>
 
+        <div class="nav-actions">
+          <div class="language-switcher" id="languageSwitcher" role="group" aria-label="Language">
+            <button type="button" data-lang="en">EN</button>
+            <button type="button" data-lang="zh">中文</button>
+          </div>
+          <a class="button button-primary nav-github" href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" data-i18n="nav.github">View on GitHub</a>
+          <button class="nav-toggle" id="navToggle" type="button" aria-label="Open navigation" aria-expanded="false">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main id="top">
+      <header class="hero">
+        <div class="site-container hero-grid">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="status-dot"></span><span data-i18n="hero.eyebrow">Local-first and open source</span></div>
+            <h1 data-i18n="hero.title">One local control plane for every AI API.</h1>
+            <p class="hero-lede" data-i18n="hero.lede">Store keys locally, route compatible requests, and understand usage across every provider.</p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" data-i18n="hero.github">View on GitHub</a>
+              <a class="button button-secondary" href="#start" data-i18n="hero.start">Quick Start</a>
+            </div>
+            <div class="hero-proof" aria-label="Product highlights">
+              <span><strong>01</strong><span data-i18n="hero.proof.local">Keys stay under your control</span></span>
+              <span><strong>02</strong><span data-i18n="hero.proof.proxy">One compatible proxy endpoint</span></span>
+              <span><strong>03</strong><span data-i18n="hero.proof.audit">Every routed call becomes visible</span></span>
+            </div>
+          </div>
+
+          <div class="hero-visual" aria-label="Illustrative API Vault dashboard preview">
+            <div class="preview-note" data-i18n="preview.note">Illustrative product preview</div>
+            <div class="app-window">
+              <div class="app-topbar">
+                <div class="app-logo"><span class="brand-mark small" aria-hidden="true"><span></span><span></span><span></span></span><strong>API Vault</strong></div>
+                <div class="app-search">⌘ K&nbsp;&nbsp; <span data-i18n="preview.search">Search providers, models, requests</span></div>
+                <span class="app-avatar">EV</span>
+              </div>
+              <div class="app-layout">
+                <aside class="app-sidebar">
+                  <span class="active" data-i18n="preview.overview">Overview</span>
+                  <span data-i18n="preview.providers">Providers</span>
+                  <span data-i18n="preview.usage">Usage</span>
+                  <span data-i18n="preview.models">Models</span>
+                  <span data-i18n="preview.tokens">Proxy tokens</span>
+                  <div class="sidebar-status"><i></i><span data-i18n="preview.local">Local service healthy</span></div>
+                </aside>
+                <div class="app-main">
+                  <div class="preview-heading">
+                    <div><span class="mini-label" data-i18n="preview.today">Today</span><strong data-i18n="preview.heading">Control plane overview</strong></div>
+                    <span class="range-pill">Last 24h</span>
+                  </div>
+                  <div class="metric-grid">
+                    <div class="metric-card"><span data-i18n="preview.requests">Requests</span><strong>2,418</strong><small class="positive">98.7% success</small></div>
+                    <div class="metric-card"><span data-i18n="preview.tokensUsed">Tokens used</span><strong>8.42M</strong><small>5.9M in / 2.5M out</small></div>
+                    <div class="metric-card"><span data-i18n="preview.latency">Median latency</span><strong>684ms</strong><small class="positive">-8.4% vs prior</small></div>
+                  </div>
+                  <div class="preview-panels">
+                    <div class="chart-panel">
+                      <div class="panel-title"><strong data-i18n="preview.traffic">Traffic by provider</strong><span data-i18n="preview.routed">Routed requests</span></div>
+                      <div class="chart" aria-hidden="true">
+                        <span style="height:38%"></span><span style="height:52%"></span><span style="height:45%"></span><span style="height:72%"></span><span style="height:61%"></span><span style="height:86%"></span><span style="height:74%"></span><span style="height:92%"></span><span style="height:80%"></span><span style="height:100%"></span><span style="height:88%"></span><span style="height:96%"></span>
+                      </div>
+                      <div class="chart-legend"><span><i class="blue"></i>OpenAI</span><span><i class="violet"></i>Anthropic</span><span><i class="green"></i>DeepSeek</span></div>
+                    </div>
+                    <div class="provider-panel">
+                      <div class="panel-title"><strong data-i18n="preview.health">Provider health</strong><span data-i18n="preview.live">Live</span></div>
+                      <div class="provider-row"><span class="provider-icon openai">O</span><span><strong>OpenAI</strong><small>312ms</small></span><i class="health good"></i></div>
+                      <div class="provider-row"><span class="provider-icon anthropic">A</span><span><strong>Anthropic</strong><small>648ms</small></span><i class="health good"></i></div>
+                      <div class="provider-row"><span class="provider-icon deepseek">D</span><span><strong>DeepSeek</strong><small>1.2s</small></span><i class="health warn"></i></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="provider-strip" aria-label="Compatible providers">
+        <div class="site-container provider-strip-inner">
+          <span data-i18n="providers.label">Built for compatible AI APIs</span>
+          <div><span>OpenAI</span><span>Anthropic</span><span>DeepSeek</span><span>OpenRouter</span><span>Gemini</span><span data-i18n="providers.more">and more</span></div>
+        </div>
+      </section>
+
+      <section class="site-section" id="problems">
+        <div class="site-container">
+          <div class="section-heading compact">
+            <span class="section-kicker" data-i18n="problems.kicker">The problem</span>
+            <h2 data-i18n="problems.title">Your AI stack grew. Your visibility did not.</h2>
+            <p data-i18n="problems.lede">Multiple providers are useful until keys, base URLs, and usage records become another system to maintain.</p>
+          </div>
+          <div class="problem-grid">
+            <article class="problem-card"><span class="card-index">01</span><h3 data-i18n="problems.keys.title">Keys live everywhere</h3><p data-i18n="problems.keys.text">Credentials end up spread across tools, config files, and provider dashboards.</p></article>
+            <article class="problem-card"><span class="card-index">02</span><h3 data-i18n="problems.routing.title">Every provider behaves differently</h3><p data-i18n="problems.routing.text">Endpoints, model names, and account balances are hard to compare at a glance.</p></article>
+            <article class="problem-card"><span class="card-index">03</span><h3 data-i18n="problems.usage.title">Usage is hard to explain</h3><p data-i18n="problems.usage.text">Without one request trail, it is difficult to see what succeeded, slowed down, or cost more.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="site-section section-soft" id="workflow">
+        <div class="site-container">
+          <div class="section-heading">
+            <span class="section-kicker" data-i18n="workflow.kicker">How it works</span>
+            <h2 data-i18n="workflow.title">Add one local layer. Keep your existing tools.</h2>
+            <p data-i18n="workflow.lede">Point compatible clients at API Vault. It resolves the provider, forwards the request, and records the result locally.</p>
+          </div>
+          <div class="workflow-board">
+            <div class="workflow-node">
+              <span class="node-icon">01</span>
+              <div><strong data-i18n="workflow.client.title">Your client</strong><p data-i18n="workflow.client.text">IDE, agent, script, or application</p></div>
+              <code>base_url = vault/proxy/...</code>
+            </div>
+            <span class="workflow-arrow" aria-hidden="true">→</span>
+            <div class="workflow-node featured">
+              <span class="node-icon">02</span>
+              <div><strong>API Vault</strong><p data-i18n="workflow.vault.text">Matches key, routes request, records usage</p></div>
+              <code>127.0.0.1:3210</code>
+            </div>
+            <span class="workflow-arrow" aria-hidden="true">→</span>
+            <div class="workflow-node">
+              <span class="node-icon">03</span>
+              <div><strong data-i18n="workflow.provider.title">Upstream provider</strong><p data-i18n="workflow.provider.text">Receives the compatible request</p></div>
+              <code>api.provider.com/v1</code>
+            </div>
+          </div>
+          <p class="workflow-limit"><span>i</span><span data-i18n="workflow.limit">API Vault can only measure requests that pass through its proxy URL.</span></p>
+        </div>
+      </section>
+
+      <section class="site-section" id="features">
+        <div class="site-container">
+          <div class="section-heading">
+            <span class="section-kicker" data-i18n="features.kicker">What you get</span>
+            <h2 data-i18n="features.title">A calmer way to operate multiple AI providers.</h2>
+            <p data-i18n="features.lede">The useful controls are together, without turning your local setup into a cloud platform.</p>
+          </div>
+          <div class="feature-grid">
+            <article class="feature-card feature-large">
+              <div class="feature-copy"><span class="feature-icon">↗</span><h3 data-i18n="features.proxy.title">One proxy for compatible requests</h3><p data-i18n="features.proxy.text">Give each provider a stable API Vault Base URL, then keep using the clients you already know.</p></div>
+              <div class="route-preview"><div><span>POST</span><code>/proxy/provider_a/v1/chat/completions</code><b>200</b></div><div><span>GET</span><code>/proxy/v1/models</code><b>200</b></div><div><span>POST</span><code>/proxy/provider_b/v1/responses</code><b>200</b></div></div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-icon">⌁</span><h3 data-i18n="features.local.title">Keys stay local</h3><p data-i18n="features.local.text">Credentials are encrypted in the local vault and decrypted only when needed.</p>
+              <div class="mini-vault"><span></span><span></span><span></span><b data-i18n="features.local.badge">Encrypted vault</b></div>
+            </article>
+            <article class="feature-card">
+              <span class="feature-icon">▤</span><h3 data-i18n="features.audit.title">A request trail you can read</h3><p data-i18n="features.audit.text">Review status, latency, model, and reported token usage for routed calls.</p>
+              <div class="audit-preview"><span><i class="good"></i><b>200</b><code>claude-sonnet</code><small>642ms</small></span><span><i class="good"></i><b>200</b><code>gpt-4.1-mini</code><small>388ms</small></span><span><i class="bad"></i><b>429</b><code>deepseek-chat</code><small>1.4s</small></span></div>
+            </article>
+            <article class="feature-card feature-wide">
+              <div class="feature-copy"><span class="feature-icon">◎</span><h3 data-i18n="features.providers.title">Providers, keys, models, and balances in context</h3><p data-i18n="features.providers.text">Group keys by provider, discover models, inspect health, and configure custom balance sync rules.</p></div>
+              <div class="context-preview"><span><b>OpenAI</b><small>3 keys · 18 models</small><i class="health good"></i></span><span><b>Anthropic</b><small>2 keys · 9 models</small><i class="health good"></i></span><span><b>DeepSeek</b><small>1 key · 4 models</small><i class="health warn"></i></span></div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="site-section section-dark">
+        <div class="site-container trust-grid">
+          <div class="trust-copy">
+            <span class="section-kicker" data-i18n="trust.kicker">Trust through clarity</span>
+            <h2 data-i18n="trust.title">Your local control plane, with honest boundaries.</h2>
+            <p data-i18n="trust.lede">API Vault is designed to make your own AI API traffic easier to control and understand, not to hide how it works.</p>
+            <a class="text-link" href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" data-i18n="trust.link">Inspect the source on GitHub →</a>
+          </div>
+          <div class="trust-list">
+            <article><span>01</span><div><h3 data-i18n="trust.local.title">Local-first by default</h3><p data-i18n="trust.local.text">Vault data and request records live on the machine running API Vault.</p></div></article>
+            <article><span>02</span><div><h3 data-i18n="trust.open.title">Open source</h3><p data-i18n="trust.open.text">Read the implementation, run it yourself, and adapt the setup to your needs.</p></div></article>
+            <article><span>03</span><div><h3 data-i18n="trust.scope.title">Clear measurement scope</h3><p data-i18n="trust.scope.text">Only traffic routed through API Vault can appear in its usage and status views.</p></div></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="site-section" id="start">
+        <div class="site-container">
+          <div class="section-heading center">
+            <span class="section-kicker" data-i18n="start.kicker">Quick Start</span>
+            <h2 data-i18n="start.title">Run it locally. Add your first provider.</h2>
+            <p data-i18n="start.lede">Choose Docker Compose or the Windows starter, then open the dashboard at localhost:3210.</p>
+          </div>
+          <div class="start-tabs" role="tablist" aria-label="Installation method">
+            <button class="start-tab active" id="tab-docker" type="button" role="tab" aria-selected="true" aria-controls="panel-docker" data-tab="docker">Docker Compose</button>
+            <button class="start-tab" id="tab-windows" type="button" role="tab" aria-selected="false" aria-controls="panel-windows" data-tab="windows" data-i18n="start.windows">Windows starter</button>
+          </div>
+          <div class="code-panel active" id="panel-docker" role="tabpanel" aria-labelledby="tab-docker">
+            <div class="code-top"><span>Terminal</span><button class="copy-button" type="button" data-copy="code-docker"><span data-i18n="copy">Copy</span></button></div>
+            <pre id="code-docker"><span class="code-comment"># Clone and start API Vault</span>
+<span class="code-command">git clone</span> https://github.com/WENGENG-boop/api-vault.git
+<span class="code-command">cd</span> api-vault
+<span class="code-command">docker compose</span> up -d --build</pre>
+          </div>
+          <div class="code-panel" id="panel-windows" role="tabpanel" aria-labelledby="tab-windows" hidden>
+            <div class="code-top"><span>start-api-vault.bat</span><button class="copy-button" type="button" data-copy="code-windows"><span data-i18n="copy">Copy</span></button></div>
+            <pre id="code-windows"><span class="code-comment"># Install Node.js LTS, then run:</span>
+<span class="code-command">start-api-vault.bat</span>
+
+<span class="code-comment"># Open http://127.0.0.1:3210</span></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="site-section section-soft" id="faq">
+        <div class="site-container faq-grid">
+          <div class="section-heading compact">
+            <span class="section-kicker" data-i18n="faq.kicker">FAQ</span>
+            <h2 data-i18n="faq.title">The practical questions, answered.</h2>
+            <p data-i18n="faq.lede">API Vault is intentionally straightforward about where it runs and what it can see.</p>
+          </div>
+          <div class="faq-list">
+            <details open><summary data-i18n="faq.data.q">Where does API Vault store data?</summary><p data-i18n="faq.data.a">On the machine where you run it. Keys are encrypted in the local vault file, while app state and usage records remain local.</p></details>
+            <details><summary data-i18n="faq.compat.q">Which providers work with it?</summary><p data-i18n="faq.compat.a">It is built around OpenAI- and Anthropic-compatible request formats and can route to compatible upstream providers.</p></details>
+            <details><summary data-i18n="faq.track.q">Can it see requests sent directly to a provider?</summary><p data-i18n="faq.track.a">No. A request must pass through an API Vault proxy URL before it can be recorded.</p></details>
+            <details><summary data-i18n="faq.remote.q">Can I use it from another machine?</summary><p data-i18n="faq.remote.a">Yes, when you deliberately expose or deploy it through a secure reachable endpoint. Use proxy tokens instead of exposing real provider keys.</p></details>
+          </div>
+        </div>
+      </section>
+
+      <section class="final-cta">
+        <div class="site-container final-cta-inner">
+          <div><span class="section-kicker" data-i18n="cta.kicker">Open source · Local-first</span><h2 data-i18n="cta.title">Bring your AI APIs into one clear view.</h2><p data-i18n="cta.text">Run API Vault yourself and see exactly what passes through.</p></div>
+          <a class="button button-light" href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener" data-i18n="cta.github">View on GitHub</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-container footer-inner">
+        <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span>API Vault</span></a>
+        <p data-i18n="footer.tagline">A local-first AI API proxy and usage dashboard.</p>
+        <div><a href="https://github.com/WENGENG-boop/api-vault" target="_blank" rel="noopener">GitHub</a><a href="https://github.com/WENGENG-boop/api-vault/blob/main/README.md" target="_blank" rel="noopener" data-i18n="footer.docs">Documentation</a><a href="#top" data-i18n="footer.top">Back to top</a></div>
+      </div>
+    </footer>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>

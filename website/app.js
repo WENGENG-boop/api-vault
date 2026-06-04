@@ -1,343 +1,322 @@
-/* ============================================================
-   API Vault site — interactions
-   i18n (EN/ZH) · tabs · copy · mobile nav.  No build step.
-   ============================================================ */
 (function () {
-  'use strict';
+  "use strict";
 
-  /* ---------- i18n dictionary ---------- */
+  var COPY_RESET_DELAY = 1500;
+  var STORE_KEY = "apivault.lang";
   var I18N = {
     en: {
-      'nav.product': 'Product',
-      'nav.features': 'Features',
-      'nav.how': 'How it works',
-      'nav.start': 'Quick start',
-
-      'hero.badge': 'Local-first · Open source',
-      'hero.title': 'Every AI API key, request, and token — in one <span class="accent">local vault</span>.',
-      'hero.lede': 'API Vault is an open-source, local-first proxy and dashboard. It encrypts your API keys on your own machine, forwards OpenAI- and Anthropic-compatible requests, and records every token, cost, and latency — without sending anything to the cloud.',
-      'hero.cta1': 'Get started',
-      'hero.cta2': 'View on GitHub',
-      'hero.note1': 'Runs locally at',
-      'hero.note2': 'Docker or one-click Windows start',
-
-      'shot.tab.overview': 'Overview',
-      'shot.tab.models': 'Models',
-      'shot.tokens': 'tokens · today',
-      'shot.range.all': 'All',
-      'shot.range.30': '30d',
-      'shot.range.7': '7d',
-      'shot.range.today': 'Today',
-
-      'compat.label': 'Works with',
-      'compat.more': '+ any compatible API',
-
-      'product.kicker': 'The dashboard',
-      'product.title': 'A clear view of every call that passes through',
-      'product.sub': 'API Vault records each request locally and turns it into usage, health, and model insights you can act on.',
-
-      'r1.kicker': 'Usage analytics',
-      'r1.title': 'See exactly where your tokens go',
-      'r1.text': 'Per-model breakdowns of input and output tokens, request counts, and cost. Filter by today, 7 days, 30 days, or all time.',
-      'r1.li1': 'Input / output token split per model',
-      'r1.li2': 'Request counts and success ratio',
-      'r1.li3': 'Cost when the provider reports it',
-      'r1.calls': 'calls · today',
-
-      'r2.kicker': 'Provider status',
-      'r2.title': 'Know which providers are healthy',
-      'r2.text': 'Aggregated success rate, latency, and call volume per provider over a rolling window, so you can spot outages and degradations early.',
-      'r2.li1': 'Healthy / degraded / outage at a glance',
-      'r2.li2': 'Rolling 7-day success and latency',
-
-      'status.outage': 'Outage',
-      'status.degraded': 'Degraded',
-      'status.healthy': 'Healthy',
-      'status.notraffic': 'No traffic',
-      'status.success': 'Success',
-      'status.latency': 'Latency',
-
-      'r3.kicker': 'Model directory',
-      'r3.title': 'One catalog for every model',
-      'r3.text': 'Automatically groups models discovered across providers, with capabilities, call counts, and cost — searchable and filterable.',
-      'r3.li1': 'Grouped by name across providers',
-      'r3.li2': 'Capability tags: text, tools, reasoning',
-      'r3.search': 'Search model ID, alias, or provider',
-      'badge.text': 'Text',
-      'badge.tools': 'Tools',
-      'badge.reasoning': 'Reasoning',
-      'badge.calls': 'calls',
-      'badge.nocost': 'No cost',
-
-      'feat.kicker': 'Features',
-      'feat.title': 'Built for control and privacy',
-      'feat.sub': 'Everything you need to manage AI API usage in one local tool.',
-      'feat.1.t': 'Local-first security',
-      'feat.1.d': 'Credentials are encrypted in a local vault file. Nothing is stored in the cloud.',
-      'feat.2.t': 'Multi-provider proxy',
-      'feat.2.d': 'Forwards OpenAI- and Anthropic-compatible requests to any upstream provider.',
-      'feat.3.t': 'Token & latency audit',
-      'feat.3.d': 'Records status, latency, and input/output tokens for every single call.',
-      'feat.4.t': 'Balance sync',
-      'feat.4.d': 'Custom HTTP polling and JSON-path rules sync provider-reported balances.',
-      'feat.5.t': 'Cloudflared tunnels',
-      'feat.5.d': 'Safely expose your local vault to remote apps through Cloudflare Tunnel.',
-      'feat.6.t': 'Consolidated metrics',
-      'feat.6.d': 'Groups keys by provider for both aggregate and per-key reports.',
-
-      'how.kicker': 'How it works',
-      'how.title': 'A local proxy between your apps and the providers',
-      'how.sub': 'Point any third-party app at the API Vault Base URL. It injects the real key, forwards the call, and records the result.',
-      'flow.app': 'Third-party app',
-      'flow.app.sub': 'IDE, agent, or script',
-      'flow.vault.sub': 'Decrypts key · forwards · records',
-      'flow.up': 'Upstream providers',
-      'flow.url.lab': 'API Vault Base URL',
-      'step.1.t': 'Run locally',
-      'step.1.d': 'Start with Docker or the Windows script, then open localhost:3210.',
-      'step.2.t': 'Add your keys',
-      'step.2.d': 'Store API keys in your encrypted local vault file.',
-      'step.3.t': 'Point apps to API Vault',
-      'step.3.d': 'Copy the API Vault Base URL into any third-party app.',
-      'step.4.t': 'Track everything',
-      'step.4.d': 'Calls are forwarded and recorded automatically.',
-
-      'start.kicker': 'Quick start',
-      'start.title': 'Up and running in two steps',
-      'start.sub': 'Choose Docker or the Windows start script. Your data stays on your machine.',
-      'start.win': 'Windows script',
-      'copy': 'Copy',
-      'copied': 'Copied',
-
-      'cta.title': 'Keep your keys. Keep your data.',
-      'cta.text': 'API Vault gives you full visibility into AI API usage and cost — locally, without exposing your credentials to the cloud.',
-      'cta.btn': 'Get it on GitHub',
-      'cta.btn2': 'Read the quick start',
-
-      'footer.tag': 'Local-first AI API proxy and usage dashboard. Open source, MIT licensed.',
-      'footer.product': 'Product',
-      'footer.resources': 'Resources',
-      'footer.readme': 'Documentation',
-      'footer.start': 'Get started',
-      'footer.docker': 'Docker Compose',
-      'footer.windows': 'Windows script',
-      'footer.license': 'MIT License',
-      'footer.totop': 'Back to top'
+      "nav.workflow": "How it works",
+      "nav.features": "Features",
+      "nav.start": "Quick Start",
+      "nav.faq": "FAQ",
+      "nav.github": "View on GitHub",
+      "hero.eyebrow": "Local-first and open source",
+      "hero.title": "One local control plane for every AI API.",
+      "hero.lede": "Store keys locally, route compatible requests, and understand usage across every provider.",
+      "hero.github": "View on GitHub",
+      "hero.start": "Quick Start",
+      "hero.proof.local": "Keys stay under your control",
+      "hero.proof.proxy": "One compatible proxy endpoint",
+      "hero.proof.audit": "Every routed call becomes visible",
+      "preview.note": "Illustrative product preview",
+      "preview.search": "Search providers, models, requests",
+      "preview.overview": "Overview",
+      "preview.providers": "Providers",
+      "preview.usage": "Usage",
+      "preview.models": "Models",
+      "preview.tokens": "Proxy tokens",
+      "preview.local": "Local service healthy",
+      "preview.today": "Today",
+      "preview.heading": "Control plane overview",
+      "preview.requests": "Requests",
+      "preview.tokensUsed": "Tokens used",
+      "preview.latency": "Median latency",
+      "preview.traffic": "Traffic by provider",
+      "preview.routed": "Routed requests",
+      "preview.health": "Provider health",
+      "preview.live": "Live",
+      "providers.label": "Built for compatible AI APIs",
+      "providers.more": "and more",
+      "problems.kicker": "The problem",
+      "problems.title": "Your AI stack grew. Your visibility did not.",
+      "problems.lede": "Multiple providers are useful until keys, base URLs, and usage records become another system to maintain.",
+      "problems.keys.title": "Keys live everywhere",
+      "problems.keys.text": "Credentials end up spread across tools, config files, and provider dashboards.",
+      "problems.routing.title": "Every provider behaves differently",
+      "problems.routing.text": "Endpoints, model names, and account balances are hard to compare at a glance.",
+      "problems.usage.title": "Usage is hard to explain",
+      "problems.usage.text": "Without one request trail, it is difficult to see what succeeded, slowed down, or cost more.",
+      "workflow.kicker": "How it works",
+      "workflow.title": "Add one local layer. Keep your existing tools.",
+      "workflow.lede": "Point compatible clients at API Vault. It resolves the provider, forwards the request, and records the result locally.",
+      "workflow.client.title": "Your client",
+      "workflow.client.text": "IDE, agent, script, or application",
+      "workflow.vault.text": "Matches key, routes request, records usage",
+      "workflow.provider.title": "Upstream provider",
+      "workflow.provider.text": "Receives the compatible request",
+      "workflow.limit": "API Vault can only measure requests that pass through its proxy URL.",
+      "features.kicker": "What you get",
+      "features.title": "A calmer way to operate multiple AI providers.",
+      "features.lede": "The useful controls are together, without turning your local setup into a cloud platform.",
+      "features.proxy.title": "One proxy for compatible requests",
+      "features.proxy.text": "Give each provider a stable API Vault Base URL, then keep using the clients you already know.",
+      "features.local.title": "Keys stay local",
+      "features.local.text": "Credentials are encrypted in the local vault and decrypted only when needed.",
+      "features.local.badge": "Encrypted vault",
+      "features.audit.title": "A request trail you can read",
+      "features.audit.text": "Review status, latency, model, and reported token usage for routed calls.",
+      "features.providers.title": "Providers, keys, models, and balances in context",
+      "features.providers.text": "Group keys by provider, discover models, inspect health, and configure custom balance sync rules.",
+      "trust.kicker": "Trust through clarity",
+      "trust.title": "Your local control plane, with honest boundaries.",
+      "trust.lede": "API Vault is designed to make your own AI API traffic easier to control and understand, not to hide how it works.",
+      "trust.link": "Inspect the source on GitHub →",
+      "trust.local.title": "Local-first by default",
+      "trust.local.text": "Vault data and request records live on the machine running API Vault.",
+      "trust.open.title": "Open source",
+      "trust.open.text": "Read the implementation, run it yourself, and adapt the setup to your needs.",
+      "trust.scope.title": "Clear measurement scope",
+      "trust.scope.text": "Only traffic routed through API Vault can appear in its usage and status views.",
+      "start.kicker": "Quick Start",
+      "start.title": "Run it locally. Add your first provider.",
+      "start.lede": "Choose Docker Compose or the Windows starter, then open the dashboard at localhost:3210.",
+      "start.windows": "Windows starter",
+      "copy": "Copy",
+      "copied": "Copied",
+      "faq.kicker": "FAQ",
+      "faq.title": "The practical questions, answered.",
+      "faq.lede": "API Vault is intentionally straightforward about where it runs and what it can see.",
+      "faq.data.q": "Where does API Vault store data?",
+      "faq.data.a": "On the machine where you run it. Keys are encrypted in the local vault file, while app state and usage records remain local.",
+      "faq.compat.q": "Which providers work with it?",
+      "faq.compat.a": "It is built around OpenAI- and Anthropic-compatible request formats and can route to compatible upstream providers.",
+      "faq.track.q": "Can it see requests sent directly to a provider?",
+      "faq.track.a": "No. A request must pass through an API Vault proxy URL before it can be recorded.",
+      "faq.remote.q": "Can I use it from another machine?",
+      "faq.remote.a": "Yes, when you deliberately expose or deploy it through a secure reachable endpoint. Use proxy tokens instead of exposing real provider keys.",
+      "cta.kicker": "Open source · Local-first",
+      "cta.title": "Bring your AI APIs into one clear view.",
+      "cta.text": "Run API Vault yourself and see exactly what passes through.",
+      "cta.github": "View on GitHub",
+      "footer.tagline": "A local-first AI API proxy and usage dashboard.",
+      "footer.docs": "Documentation",
+      "footer.top": "Back to top"
     },
     zh: {
-      'nav.product': '产品',
-      'nav.features': '功能',
-      'nav.how': '工作原理',
-      'nav.start': '快速开始',
-
-      'hero.badge': '本地优先 · 开源',
-      'hero.title': '所有 AI API 密钥、请求与用量，统一在<span class="accent">本地保管</span>。',
-      'hero.lede': 'API Vault 是一个开源、本地优先的代理与仪表盘。它在你自己的机器上加密保管 API 密钥，转发 OpenAI / Anthropic 兼容请求，并记录每一次调用的用量、成本与延迟——数据不出本机。',
-      'hero.cta1': '开始使用',
-      'hero.cta2': '在 GitHub 查看',
-      'hero.note1': '本地运行于',
-      'hero.note2': '支持 Docker 或 Windows 一键启动',
-
-      'shot.tab.overview': '总览',
-      'shot.tab.models': '模型',
-      'shot.tokens': 'tokens · 今天',
-      'shot.range.all': '全部',
-      'shot.range.30': '30天',
-      'shot.range.7': '7天',
-      'shot.range.today': '今天',
-
-      'compat.label': '兼容',
-      'compat.more': '+ 任意兼容 API',
-
-      'product.kicker': '仪表盘',
-      'product.title': '每一次经过的调用，都看得清清楚楚',
-      'product.sub': 'API Vault 在本地记录每个请求，并把它们转化为可用的用量、健康度与模型洞察。',
-
-      'r1.kicker': '用量分析',
-      'r1.title': '清楚看到每一个 token 花在哪',
-      'r1.text': '按模型拆分输入 / 输出 token、请求数与成本；可按今天、7 天、30 天或全部时间筛选。',
-      'r1.li1': '按模型拆分输入 / 输出 token',
-      'r1.li2': '请求数与成功率',
-      'r1.li3': '服务商返回时显示成本',
-      'r1.calls': '次调用 · 今天',
-
-      'r2.kicker': '服务商状态',
-      'r2.title': '一眼看清哪些服务商正常',
-      'r2.text': '在滚动时间窗内聚合每个服务商的成功率、延迟与调用量，及时发现故障与降级。',
-      'r2.li1': '正常 / 降级 / 故障一目了然',
-      'r2.li2': '滚动 7 天的成功率与延迟',
-
-      'status.outage': '故障',
-      'status.degraded': '降级',
-      'status.healthy': '正常',
-      'status.notraffic': '无流量',
-      'status.success': '成功率',
-      'status.latency': '延迟',
-
-      'r3.kicker': '模型目录',
-      'r3.title': '所有模型，一个目录',
-      'r3.text': '自动归并各服务商发现的模型，标注能力、调用数与成本，支持搜索与筛选。',
-      'r3.li1': '跨服务商按名称归并',
-      'r3.li2': '能力标签：文本、工具、推理',
-      'r3.search': '搜索模型 ID、别名或服务商',
-      'badge.text': '文本',
-      'badge.tools': '工具',
-      'badge.reasoning': '推理',
-      'badge.calls': '次调用',
-      'badge.nocost': '无成本',
-
-      'feat.kicker': '功能',
-      'feat.title': '为掌控与隐私而构建',
-      'feat.sub': '在一个本地工具中，管理 AI API 用量所需的一切。',
-      'feat.1.t': '本地优先的安全',
-      'feat.1.d': '凭据加密存储在本地 vault 文件中，不上传云端。',
-      'feat.2.t': '多服务商代理',
-      'feat.2.d': '将 OpenAI / Anthropic 兼容请求转发到任意上游服务商。',
-      'feat.3.t': '用量与延迟审计',
-      'feat.3.d': '记录每一次调用的状态、延迟与输入 / 输出 token。',
-      'feat.4.t': '余额同步',
-      'feat.4.d': '通过自定义 HTTP 轮询与 JSON 路径规则同步服务商余额。',
-      'feat.5.t': 'Cloudflared 隧道',
-      'feat.5.d': '通过 Cloudflare Tunnel 安全地把本地 vault 暴露给远程应用。',
-      'feat.6.t': '聚合统计',
-      'feat.6.d': '按服务商归并密钥，提供聚合与单密钥两级报表。',
-
-      'how.kicker': '工作原理',
-      'how.title': '位于你的应用与服务商之间的本地代理',
-      'how.sub': '把任意第三方应用指向 API Vault Base URL；它会注入真实密钥、转发请求并记录结果。',
-      'flow.app': '第三方应用',
-      'flow.app.sub': 'IDE、智能体或脚本',
-      'flow.vault.sub': '解密密钥 · 转发 · 记录',
-      'flow.up': '上游服务商',
-      'flow.url.lab': 'API Vault Base URL',
-      'step.1.t': '本地启动',
-      'step.1.d': '用 Docker 或 Windows 脚本启动，然后打开 localhost:3210。',
-      'step.2.t': '添加密钥',
-      'step.2.d': '将 API 密钥保存到加密的本地 vault 文件。',
-      'step.3.t': '指向 API Vault',
-      'step.3.d': '把 API Vault Base URL 复制到任意第三方应用。',
-      'step.4.t': '全程记录',
-      'step.4.d': '调用被自动转发并记录。',
-
-      'start.kicker': '快速开始',
-      'start.title': '两步即可运行',
-      'start.sub': '选择 Docker 或 Windows 启动脚本，数据始终留在你的机器上。',
-      'start.win': 'Windows 脚本',
-      'copy': '复制',
-      'copied': '已复制',
-
-      'cta.title': '密钥在手，数据在本机。',
-      'cta.text': 'API Vault 让你在本地完全掌握 AI API 的用量与成本，凭据不暴露给云端。',
-      'cta.btn': '前往 GitHub',
-      'cta.btn2': '查看快速开始',
-
-      'footer.tag': '本地优先的 AI API 代理与用量仪表盘。开源，MIT 协议。',
-      'footer.product': '产品',
-      'footer.resources': '资源',
-      'footer.readme': '文档',
-      'footer.start': '开始使用',
-      'footer.docker': 'Docker Compose',
-      'footer.windows': 'Windows 脚本',
-      'footer.license': 'MIT 协议',
-      'footer.totop': '回到顶部'
+      "nav.workflow": "工作原理",
+      "nav.features": "核心功能",
+      "nav.start": "快速开始",
+      "nav.faq": "常见问题",
+      "nav.github": "在 GitHub 查看",
+      "hero.eyebrow": "本地优先 · 开源",
+      "hero.title": "一个本地控制台，管理你的所有 AI API。",
+      "hero.lede": "在本机保管密钥，通过兼容代理转发请求，并看清每个服务商的调用情况。",
+      "hero.github": "在 GitHub 查看",
+      "hero.start": "快速开始",
+      "hero.proof.local": "密钥始终由你掌控",
+      "hero.proof.proxy": "一个兼容代理入口",
+      "hero.proof.audit": "每次代理调用都有记录",
+      "preview.note": "产品界面示意",
+      "preview.search": "搜索服务商、模型、请求",
+      "preview.overview": "总览",
+      "preview.providers": "服务商",
+      "preview.usage": "用量",
+      "preview.models": "模型",
+      "preview.tokens": "代理令牌",
+      "preview.local": "本地服务运行正常",
+      "preview.today": "今天",
+      "preview.heading": "控制台总览",
+      "preview.requests": "请求数",
+      "preview.tokensUsed": "Token 用量",
+      "preview.latency": "延迟中位数",
+      "preview.traffic": "服务商流量",
+      "preview.routed": "已代理请求",
+      "preview.health": "服务商状态",
+      "preview.live": "实时",
+      "providers.label": "面向兼容的 AI API",
+      "providers.more": "以及更多",
+      "problems.kicker": "现实问题",
+      "problems.title": "AI 工具越来越多，调用情况却越来越难看清。",
+      "problems.lede": "多个服务商很有用，但密钥、Base URL 和用量记录很快就会变成另一套需要维护的系统。",
+      "problems.keys.title": "密钥散落在各处",
+      "problems.keys.text": "凭据分散在不同工具、配置文件和服务商后台中。",
+      "problems.routing.title": "每个服务商都不一样",
+      "problems.routing.text": "接口地址、模型名称与账户余额很难放在一起比较。",
+      "problems.usage.title": "调用情况难以解释",
+      "problems.usage.text": "没有统一请求记录，就很难判断哪些调用成功、变慢或成本更高。",
+      "workflow.kicker": "工作原理",
+      "workflow.title": "增加一个本地代理层，继续使用现有工具。",
+      "workflow.lede": "把兼容客户端指向 API Vault。它会匹配服务商、转发请求，并在本地记录结果。",
+      "workflow.client.title": "你的客户端",
+      "workflow.client.text": "IDE、智能体、脚本或应用",
+      "workflow.vault.text": "匹配密钥、路由请求、记录用量",
+      "workflow.provider.title": "上游服务商",
+      "workflow.provider.text": "接收兼容格式的请求",
+      "workflow.limit": "API Vault 只能统计经过其代理地址的请求。",
+      "features.kicker": "你将获得",
+      "features.title": "用更从容的方式管理多个 AI 服务商。",
+      "features.lede": "把真正需要的控制项集中起来，同时保持本地工具的简单与透明。",
+      "features.proxy.title": "一个代理，转发兼容请求",
+      "features.proxy.text": "为每个服务商提供稳定的 API Vault Base URL，继续使用你熟悉的客户端。",
+      "features.local.title": "密钥留在本机",
+      "features.local.text": "凭据加密保存在本地 vault 中，仅在需要时解密。",
+      "features.local.badge": "加密本地仓库",
+      "features.audit.title": "清楚易读的请求记录",
+      "features.audit.text": "查看已代理调用的状态、延迟、模型与服务商返回的 Token 用量。",
+      "features.providers.title": "把服务商、密钥、模型与余额放在同一上下文",
+      "features.providers.text": "按服务商归类密钥、发现模型、检查状态，并配置自定义余额同步规则。",
+      "trust.kicker": "透明带来信任",
+      "trust.title": "属于你的本地控制台，也清楚说明能力边界。",
+      "trust.lede": "API Vault 帮你更容易地掌控和理解自己的 AI API 流量，同时保持工作方式透明。",
+      "trust.link": "在 GitHub 检查源代码 →",
+      "trust.local.title": "默认本地优先",
+      "trust.local.text": "Vault 数据与请求记录保存在运行 API Vault 的机器上。",
+      "trust.open.title": "开源",
+      "trust.open.text": "阅读实现、自己运行，并按实际需要调整部署方式。",
+      "trust.scope.title": "明确的统计范围",
+      "trust.scope.text": "只有经过 API Vault 的流量才会出现在用量和状态页面中。",
+      "start.kicker": "快速开始",
+      "start.title": "在本机运行，然后添加第一个服务商。",
+      "start.lede": "选择 Docker Compose 或 Windows 启动脚本，然后打开 localhost:3210。",
+      "start.windows": "Windows 启动脚本",
+      "copy": "复制",
+      "copied": "已复制",
+      "faq.kicker": "常见问题",
+      "faq.title": "直接回答实际使用问题。",
+      "faq.lede": "API Vault 会清楚说明它在哪里运行，以及它能看到什么。",
+      "faq.data.q": "API Vault 把数据保存在哪里？",
+      "faq.data.a": "保存在运行它的机器上。密钥加密存放在本地 vault 文件中，应用状态与用量记录也留在本机。",
+      "faq.compat.q": "它支持哪些服务商？",
+      "faq.compat.a": "它围绕 OpenAI 与 Anthropic 兼容请求格式构建，并可转发到兼容的上游服务商。",
+      "faq.track.q": "它能看到直接发送给服务商的请求吗？",
+      "faq.track.a": "不能。请求必须经过 API Vault 代理地址后才能被记录。",
+      "faq.remote.q": "我能从其他机器使用它吗？",
+      "faq.remote.a": "可以，但需要主动通过安全且可访问的入口暴露或部署它。远程使用时应使用代理令牌，而不是暴露真实服务商密钥。",
+      "cta.kicker": "开源 · 本地优先",
+      "cta.title": "把你的 AI API 放进一个清晰视图。",
+      "cta.text": "自己运行 API Vault，看清每一次经过代理的调用。",
+      "cta.github": "在 GitHub 查看",
+      "footer.tagline": "本地优先的 AI API 代理与用量仪表盘。",
+      "footer.docs": "文档",
+      "footer.top": "回到顶部"
     }
   };
 
-  var HTML_KEYS = { 'hero.title': true };
-  var STORE_KEY = 'apivault.lang';
-
-  function applyLang(lang) {
-    var dict = I18N[lang] || I18N.en;
-
-    // data-i18n -> textContent
-    document.querySelectorAll('[data-i18n]').forEach(function (el) {
-      var k = el.getAttribute('data-i18n');
-      if (dict[k] != null) el.textContent = dict[k];
-    });
-    // data-i18n-html -> innerHTML (trusted, our own strings)
-    document.querySelectorAll('[data-i18n-html]').forEach(function (el) {
-      var k = el.getAttribute('data-i18n-html');
-      if (dict[k] != null) el.innerHTML = dict[k];
-    });
-
-    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
-
-    document.querySelectorAll('#lang button').forEach(function (b) {
-      b.classList.toggle('active', b.getAttribute('data-lang') === lang);
-    });
-
-    try { localStorage.setItem(STORE_KEY, lang); } catch (e) {}
-    window.__copyLabel = dict['copy'];
-    window.__copiedLabel = dict['copied'];
+  function getPreferredLanguage() {
+    try {
+      var saved = localStorage.getItem(STORE_KEY);
+      if (saved === "en" || saved === "zh") return saved;
+    } catch (error) {}
+    return (navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en";
   }
 
-  function initLang() {
-    var saved;
-    try { saved = localStorage.getItem(STORE_KEY); } catch (e) {}
-    var lang = saved || ((navigator.language || 'en').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en');
-    applyLang(lang);
+  function applyLanguage(lang) {
+    var dictionary = I18N[lang] || I18N.en;
+    document.querySelectorAll("[data-i18n]").forEach(function (element) {
+      var key = element.getAttribute("data-i18n");
+      if (dictionary[key] != null) element.textContent = dictionary[key];
+    });
+    document.querySelectorAll("[data-lang]").forEach(function (button) {
+      var isActive = button.getAttribute("data-lang") === lang;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-pressed", String(isActive));
+    });
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+    window.__apiVaultCopyLabel = dictionary.copy;
+    window.__apiVaultCopiedLabel = dictionary.copied;
+    try { localStorage.setItem(STORE_KEY, lang); } catch (error) {}
+  }
 
-    var box = document.getElementById('lang');
-    if (box) box.addEventListener('click', function (e) {
-      var btn = e.target.closest('button[data-lang]');
-      if (btn) applyLang(btn.getAttribute('data-lang'));
+  function initLanguage() {
+    applyLanguage(getPreferredLanguage());
+    var switcher = document.getElementById("languageSwitcher");
+    if (!switcher) return;
+    switcher.addEventListener("click", function (event) {
+      var button = event.target.closest("[data-lang]");
+      if (button) applyLanguage(button.getAttribute("data-lang"));
     });
   }
 
-  /* ---------- Quick-start tabs ---------- */
-  function initTabs() {
-    var btns = document.querySelectorAll('.tab-btn');
-    btns.forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        btns.forEach(function (b) { b.classList.remove('active'); });
-        document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
-        btn.classList.add('active');
-        var panel = document.getElementById('panel-' + btn.getAttribute('data-tab'));
-        if (panel) panel.classList.add('active');
+  function initNavigation() {
+    var nav = document.getElementById("siteNav");
+    var toggle = document.getElementById("navToggle");
+    if (!nav || !toggle) return;
+    toggle.addEventListener("click", function () {
+      var isOpen = nav.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", String(isOpen));
+    });
+    document.querySelectorAll("#navLinks a").forEach(function (link) {
+      link.addEventListener("click", function () {
+        nav.classList.remove("open");
+        toggle.setAttribute("aria-expanded", "false");
       });
     });
   }
 
-  /* ---------- Copy buttons ---------- */
-  function initCopy() {
-    document.querySelectorAll('.copy').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var pre = document.getElementById(btn.getAttribute('data-copy'));
-        if (!pre) return;
-        var text = pre.innerText.replace(/ /g, ' ');
-        var label = btn.querySelector('span');
-        var done = function () {
-          if (!label) return;
-          var prev = label.textContent;
-          label.textContent = window.__copiedLabel || 'Copied';
-          setTimeout(function () { label.textContent = window.__copyLabel || prev; }, 1400);
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done).catch(done);
-        } else {
-          var ta = document.createElement('textarea');
-          ta.value = text; document.body.appendChild(ta); ta.select();
-          try { document.execCommand('copy'); } catch (e) {}
-          document.body.removeChild(ta); done();
+  function initTabs() {
+    var tabs = document.querySelectorAll(".start-tab");
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        tabs.forEach(function (item) {
+          item.classList.remove("active");
+          item.setAttribute("aria-selected", "false");
+        });
+        document.querySelectorAll(".code-panel").forEach(function (panel) {
+          panel.classList.remove("active");
+          panel.hidden = true;
+        });
+        tab.classList.add("active");
+        tab.setAttribute("aria-selected", "true");
+        var panel = document.getElementById("panel-" + tab.getAttribute("data-tab"));
+        if (panel) {
+          panel.hidden = false;
+          panel.classList.add("active");
         }
       });
     });
   }
 
-  /* ---------- Mobile nav ---------- */
-  function initNav() {
-    var nav = document.getElementById('nav');
-    var toggle = document.getElementById('navToggle');
-    if (toggle) toggle.addEventListener('click', function () { nav.classList.toggle('open'); });
-    document.querySelectorAll('#navLinks a').forEach(function (a) {
-      a.addEventListener('click', function () { nav.classList.remove('open'); });
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve) {
+      var textarea = document.createElement("textarea");
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try { document.execCommand("copy"); } catch (error) {}
+      textarea.remove();
+      resolve();
     });
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
-    initLang();
+  function initCopyButtons() {
+    document.querySelectorAll(".copy-button").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var target = document.getElementById(button.getAttribute("data-copy"));
+        var label = button.querySelector("span");
+        if (!target || !label) return;
+        copyText(target.innerText).then(function () {
+          label.textContent = window.__apiVaultCopiedLabel || "Copied";
+          setTimeout(function () {
+            label.textContent = window.__apiVaultCopyLabel || "Copy";
+          }, COPY_RESET_DELAY);
+        }).catch(function () {});
+      });
+    });
+  }
+
+  function init() {
+    initLanguage();
+    initNavigation();
     initTabs();
-    initCopy();
-    initNav();
-  });
+    initCopyButtons();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();

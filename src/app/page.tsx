@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import Script from "next/script";
 
 export const metadata = {
-  title: "API Vault - Local AI API Proxy, Key Manager & Usage Dashboard",
-  description: "API Vault is a local browser dashboard and proxy for managing multiple AI API providers, API keys, usage records, and sync balance data locally."
+  title: "API Vault - One local control plane for every AI API",
+  description: "Store AI API keys locally, route compatible requests, and understand usage across every provider with API Vault."
 };
 
 export default function WebsitePage() {
