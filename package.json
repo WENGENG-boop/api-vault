@@ -1,8 +1,8 @@
 {
-  "name": "api-vault-demo",
+  "name": "api-vault",
   "version": "0.1.0",
   "private": true,
-  "description": "Local browser API key vault, proxy, and real billing sync demo.",
+  "description": "Local browser API key vault, proxy, and real billing sync.",
   "author": "API Vault",
   "main": "dist-main/electron/main.js",
   "scripts": {

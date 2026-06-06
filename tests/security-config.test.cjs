@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const { warnIfDockerAllowedHostsMissing } = require("../dist-main/server/startup.js");
 const { isSetupRequestAllowed } = require("../dist-main/server/routes/apiRoutes.js");
@@ -83,4 +85,14 @@ test("trusted proxy auth limiter uses the rightmost forwarded address", () => {
     if (previous === undefined) delete process.env.API_VAULT_TRUST_PROXY;
     else process.env.API_VAULT_TRUST_PROXY = previous;
   }
+});
+
+test("package metadata uses production naming while preserving the legacy vault verifier", () => {
+  const root = path.resolve(__dirname, "..");
+  const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const cryptoSource = fs.readFileSync(path.join(root, "src", "main", "crypto.ts"), "utf8");
+
+  assert.equal(packageJson.name, "api-vault");
+  assert.doesNotMatch(packageJson.description, /\bdemo\b/i);
+  assert.match(cryptoSource, /api-vault-demo-verifier/);
 });
