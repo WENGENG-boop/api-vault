@@ -14,6 +14,7 @@ import { sendJson } from "../utils/responses";
 import { writeAccountPoolAuthFile } from "../services/accountPoolAuthService";
 import { syncProviderModelCatalog } from "../services/modelCatalogService";
 import { testUpstreamUrl } from "../services/upstreamProbeService";
+import { getLocalToolUsage } from "../../main/localUsage/index.js";
 import { publicLockedAppState } from "../../shared/appState";
 
 export interface ApiRouteContext {
@@ -62,6 +63,18 @@ export async function handleApi(
       return;
     }
     sendJson(res, 200, getPublicState(store, proxyPort));
+    return;
+  }
+
+  if (method === "GET" && url.pathname === "/api/local-usage") {
+    if (!adminSessions?.validate(extractAdminToken(req))) {
+      sendJson(res, 401, { error: "unauthorized" });
+      return;
+    }
+    const days = Math.min(365, Math.max(1, Number(url.searchParams.get("days")) || 7));
+    const { buckets, sessions, warnings } = await getLocalToolUsage({ days });
+    const tools = [...new Set([...buckets.map((b) => b.tool), ...sessions.map((s) => s.tool)])].sort();
+    sendJson(res, 200, { buckets, sessions, tools, warnings, generatedAt: new Date().toISOString() });
     return;
   }
 

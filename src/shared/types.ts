@@ -399,3 +399,44 @@ export interface VaultStatus {
   initialized: boolean;
   unlocked: boolean;
 }
+
+// Local AI tool usage parsed from on-disk logs (Claude Code, Codex, and others)
+// via API Vault's bundled local-log parsers. A 30-minute aggregation bucket. This is a
+// separate axis from proxy `UsageEvent`s: token-authoritative but with no
+// provider/key/cost attribution.
+export interface LocalUsageBucket {
+  tool: string;          // local tool source, e.g. "claude-code"
+  model: string;
+  project: string;
+  bucketStart: string;   // ISO timestamp, rounded to a 30-minute boundary
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  reasoningOutputTokens: number;
+  totalTokens: number;
+}
+
+// One parsed session (a continuous working stretch in a tool), used for the
+// time/session KPIs that token buckets can't express.
+export interface LocalUsageSession {
+  tool: string;
+  project: string;
+  firstMessageAt: string;   // ISO
+  durationSeconds: number;  // wall-clock first→last message
+  activeSeconds: number;    // AI generation time, excluding queue/TTFT wait
+  messageCount: number;
+  userMessageCount: number;
+}
+
+export interface LocalUsageResponse {
+  buckets: LocalUsageBucket[];
+  sessions: LocalUsageSession[];
+  tools: string[];       // tools that actually produced data this run
+  warnings?: LocalUsageWarning[];
+  generatedAt: string;
+}
+
+export interface LocalUsageWarning {
+  tool: string;
+  message: string;
+}

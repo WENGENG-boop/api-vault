@@ -4,9 +4,9 @@ import { testUpstreamUrl } from "./upstreamProbeService";
 
 const lastSyncTimes = new Map<string, number>();
 
-export function startAutoSync(store: VaultStore): void {
+export function startAutoSync(store: VaultStore): () => void {
   // Balance auto-sync (every 60s)
-  setInterval(() => {
+  const balanceTimer = setInterval(() => {
     if (!store.status.unlocked) return;
     const state = store.getState();
     for (const provider of state.providers) {
@@ -23,9 +23,10 @@ export function startAutoSync(store: VaultStore): void {
       });
     }
   }, 60_000);
+  balanceTimer.unref?.();
 
   // Latency check (every 10s)
-  setInterval(() => {
+  const latencyTimer = setInterval(() => {
     if (!store.status.unlocked) return;
     const state = store.getState();
     for (const provider of state.providers) {
@@ -48,5 +49,11 @@ export function startAutoSync(store: VaultStore): void {
       });
     }
   }, 10_000);
+  latencyTimer.unref?.();
+
+  return () => {
+    clearInterval(balanceTimer);
+    clearInterval(latencyTimer);
+  };
 }
 

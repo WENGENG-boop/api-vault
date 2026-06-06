@@ -42,11 +42,14 @@ src/
   app/         Next.js App Router (frontend entry)
     layout.tsx           root layout
     page.tsx             / landing page (renders website/ at build time)
-    vault/page.tsx       /vault dashboard (mounts the renderer App)
 
-  renderer/    React dashboard UI (feature pages, shared components, apiClient)
   electron/    Optional Electron desktop wrapper (main.ts)
   shared/      TypeScript types shared across all layers
+
+public/
+  vault/       Static management console served at /vault
+
+website/       Landing-page HTML, CSS, JavaScript, and fonts
 ```
 
 ## Processes & Servers

@@ -4,13 +4,14 @@ import type { UsageEvent } from "../../shared/types";
 import {
   readRequestBody,
   isTimeoutError,
+  isHopByHopHeader,
   proxyTimeoutMessage,
   proxyTimeoutMs,
   shouldSendBody,
   toArrayBuffer,
   toResponseHeaders
 } from "../../main/httpUtils";
-import { buildUpstreamUrl, normalizeProxySuffixPath } from "../../main/proxy";
+import { buildUpstreamUrl, normalizeProxySuffixPath, shouldDropForwardedHeader } from "../../main/proxy";
 import type { VaultStore } from "../../main/store";
 import { extractRequestModel, extractUsageFromResponse } from "../../main/usage";
 
@@ -51,12 +52,12 @@ export async function handleLocalServiceProxy(
   const upstreamHeaders: Record<string, string> = {};
   for (const [name, value] of Object.entries(req.headers)) {
     const lower = name.toLowerCase();
-    if (["connection", "host", "transfer-encoding", "content-length"].includes(lower)) continue;
+    if (isHopByHopHeader(lower) || shouldDropForwardedHeader(lower)) continue;
     if (typeof value === "string") upstreamHeaders[name] = value;
     else if (Array.isArray(value)) upstreamHeaders[name] = value[0];
   }
   const localApiKey = store.getLocalServiceApiKey(serviceId);
-  if (localApiKey && !upstreamHeaders.authorization && !upstreamHeaders["x-api-key"]) {
+  if (localApiKey) {
     if (service.type === "anthropic-compatible") {
       upstreamHeaders["x-api-key"] = localApiKey;
       if (!upstreamHeaders["anthropic-version"]) upstreamHeaders["anthropic-version"] = "2023-06-01";

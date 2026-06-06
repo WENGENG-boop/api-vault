@@ -638,6 +638,10 @@ function sanitizeProxyError(error: unknown): { status: number; code: string; mes
   if (isTimeoutError(error)) {
     return { status: 504, code: "proxy_timeout", message: proxyTimeoutMessage() };
   }
+  const message = String((error as Error)?.message ?? error);
+  if (/^Image URL /i.test(message)) {
+    return { status: 400, code: "invalid_image_url", message };
+  }
   const appError = toAppError(error);
   if (appError.statusCode >= 500) {
     return { status: 502, code: "upstream_error", message: "Upstream request failed" };
@@ -812,12 +816,13 @@ function parseJsonObject(body: Buffer): Record<string, unknown> | undefined {
   }
 }
 
-function shouldDropForwardedHeader(lower: string): boolean {
+export function shouldDropForwardedHeader(lower: string): boolean {
   const credentialHeaders = new Set([
     "authorization",
     "x-api-key",
     "api-key",
     "x-provider-api-key",
+    "x-api-vault-admin",
     "cookie",
     "set-cookie"
   ]);
@@ -825,8 +830,6 @@ function shouldDropForwardedHeader(lower: string): boolean {
   if (lower.startsWith("proxy-")) return true;
   return false;
 }
-
-
 
 
 

@@ -23,11 +23,15 @@ export function serveStatic(pathname: string, res: ServerResponse): void {
     return;
   }
 
+  // Only content-hashed assets (Next's /_next/static/*) are safe to cache
+  // forever. The hand-written console under /vault/b2/* uses stable, unhashed
+  // URLs, so caching it immutably would hide every update behind a hard refresh.
+  const hashedAsset = pathname.includes("/_next/") && !filePath.endsWith(".html");
   res.writeHead(200, {
     "content-type": contentType(filePath),
-    "cache-control": filePath.endsWith(".html")
-      ? "no-cache, no-store, must-revalidate"
-      : "public, max-age=31536000, immutable"
+    "cache-control": hashedAsset
+      ? "public, max-age=31536000, immutable"
+      : "no-cache"
   });
   createReadStream(filePath).pipe(res);
 }

@@ -1,6 +1,6 @@
 // shell.js — single left sidebar (grouped nav) + airy content host. No top bar.
 import { h, icon } from "./dom.js";
-import { store, set, setTheme, applyState } from "./store.js";
+import { store, set, setTheme, applyState, clearUi } from "./store.js";
 import { api } from "./api.js";
 import { makeMockState } from "./mock.js";
 import { toast } from "./ui.js";
@@ -8,7 +8,7 @@ import { toast } from "./ui.js";
 export const CATEGORIES = [
   { id: "gateway", label: "Gateway", tabs: ["dashboard", "providers", "account-pools", "local-services"] },
   { id: "access", label: "Access Control", tabs: ["proxy-tokens", "models"] },
-  { id: "analytics", label: "Analytics & Billing", tabs: ["status", "usage", "estimates", "billing"] },
+  { id: "analytics", label: "Analytics & Billing", tabs: ["status", "usage", "local-tools", "api-analytics", "estimates", "billing"] },
 ];
 
 const TAB_META = {
@@ -20,6 +20,8 @@ const TAB_META = {
   models: { label: "Models", icon: "models" },
   status: { label: "Status", icon: "status" },
   usage: { label: "Usage", icon: "usage" },
+  "local-tools": { label: "Local Tools", icon: "layers" },
+  "api-analytics": { label: "API Analytics", icon: "activity" },
   estimates: { label: "Estimates", icon: "pie" },
   billing: { label: "Billing", icon: "billing" },
 };
@@ -69,12 +71,14 @@ export function renderShell(contentNode) {
 
 async function toggleMode() {
   if (store.mode === "live") {
+    clearUi("lt-data");
     store.mode = "demo"; store.baseUrl = ""; store.liveConnected = false;
     applyState(makeMockState());
     toast("Switched to demo mode", "info");
     return;
   }
   // demo → live: reconnect to the real backend through the same-origin proxy
+  clearUi("lt-data");
   store.mode = "live"; store.baseUrl = "";
   try {
     applyState(await api.getState());

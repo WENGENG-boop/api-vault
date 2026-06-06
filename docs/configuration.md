@@ -11,6 +11,7 @@ runtime behavior is controlled by the variables below, read at process start.
 | `BIND_HOST` | `127.0.0.1` | Interface to bind. Overrides `HOST`. |
 | `HOST` | `127.0.0.1` | Fallback bind interface if `BIND_HOST` unset. |
 | `API_VAULT_DOCKER` | _(unset)_ | When `1`, the default bind becomes `0.0.0.0` (so the container is reachable). Explicit `BIND_HOST`/`HOST` still win. |
+| `API_VAULT_ALLOWED_HOSTS` | _(unset)_ | Comma-separated `Host` allowlist. When unset, only `localhost`, `127.0.0.1`, and `::1` are accepted to reduce DNS rebinding risk. Set this when running behind a trusted reverse proxy hostname. |
 | `API_VAULT_CORS_ORIGINS` | _(unset)_ | Comma-separated origin allowlist. When set, only these origins get CORS headers. When unset, only the local host and `localhost`/`127.0.0.1` on `PORT` are allowed. |
 | `API_VAULT_NO_OPEN` | _(unset)_ | When `1`, do **not** auto-open the browser on startup. |
 
@@ -42,6 +43,7 @@ The management API (`/api/*`) enforces a separate fixed JSON body limit of
 |----------|---------|--------|
 | `API_VAULT_MAX_IMAGE_BYTES` | `20971520` (20 MB) | Max size of an image fetched/inlined during protocol conversion. |
 | `API_VAULT_IMAGE_FETCH_TIMEOUT_MS` | `15000` (15s) | Timeout when fetching a remote image referenced in a request. |
+| `API_VAULT_IMAGE_FETCH_MAX_REDIRECTS` | `3` | Max redirects followed while fetching remote image URLs. Every redirect target is re-validated against private-network SSRF rules. |
 
 ## Frontend (build time)
 

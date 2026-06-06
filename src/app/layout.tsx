@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import "../renderer/styles.css";
 
 export const metadata: Metadata = {
   title: "API Vault",

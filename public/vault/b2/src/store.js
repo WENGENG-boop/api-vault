@@ -40,6 +40,11 @@ export function setUi(key, patch) {
   emit();
 }
 
+export function clearUi(key) {
+  delete store.ui[key];
+  emit();
+}
+
 export function setTheme(theme) {
   store.theme = theme;
   localStorage.setItem("av-theme-v2", theme);

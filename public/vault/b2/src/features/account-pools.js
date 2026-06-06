@@ -61,7 +61,9 @@ function poolBody(s, p) {
 const actionBtn = (ic, label, onClick) => { const b = h("button.btn.sm", { onClick: () => onClick(b) }, icon(ic, 13), label); return b; };
 
 async function run(btn, fn, okMsg) {
-  await withBusy(btn, async () => { const r = await fn(); if (r?.state) applyState(r.state); toast(okMsg, "ok"); });
+  try {
+    await withBusy(btn, async () => { const r = await fn(); if (r?.state) applyState(r.state); toast(okMsg, "ok"); });
+  } catch {}
 }
 
 function uploadAuth(p) {
@@ -77,11 +79,18 @@ function uploadAuth(p) {
 
 function importToToken(s, p) {
   if (!s.proxyTokens.length) { toast("Create a proxy token first", "err"); return; }
+  if (!p.providerId) { toast("Create or bind a provider before importing models", "err"); return; }
+  if (!p.modelNames.length) { toast("Sync account pool models before importing", "err"); return; }
   let tokenId = s.proxyTokens[0].id;
   const body = h("div.stack",
     h("p.muted", `Import ${p.modelNames.length} model(s) from "${p.name}" into a proxy token's mapping.`),
     field("Target proxy token", h("select", { onchange: (e) => (tokenId = e.target.value) }, s.proxyTokens.map((t) => h("option", { value: t.id, selected: t.id === tokenId }, t.name)))));
-  const btn = h("button.btn.primary", { onClick: async () => { await withBusy(btn, async () => { const { state } = await api.importAccountPoolModelsToProxyToken(p.id, { proxyTokenId: tokenId, modelNames: p.modelNames }); if (state) applyState(state); }); closeOverlay(); toast("Models imported to token", "ok"); } }, "Import models");
+  const btn = h("button.btn.primary", { onClick: async () => {
+    try {
+      await withBusy(btn, async () => { const { state } = await api.importAccountPoolModelsToProxyToken(p.id, { proxyTokenId: tokenId, modelNames: p.modelNames }); if (state) applyState(state); });
+      closeOverlay(); toast("Models imported to token", "ok");
+    } catch {}
+  } }, "Import models");
   openModal({ title: "Import models to token", body, footer: [h("button.btn", { onClick: closeOverlay }, "Cancel"), btn] });
 }
 

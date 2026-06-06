@@ -415,11 +415,14 @@ If a provider returns usage as `token_usage`, `tokens`, or another unit, API Vau
 
 ```text
 src/
+  app/        Next.js landing-page entry
+  electron/   Optional Electron desktop wrapper
   main/       Core vault, proxy, balance, and usage logic
-  renderer/   Browser UI
   server/     Local HTTP server
   shared/     Shared TypeScript types
 
+public/vault/ Browser management console
+website/      Landing-page assets
 tests/        Node test files
 
 Dockerfile
@@ -513,4 +516,3 @@ Common structured error codes include:
 - PROCESS_EXITED
 - PROCESS_ERROR
 - MANAGER_UNAVAILABLE
-

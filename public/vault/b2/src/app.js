@@ -14,13 +14,16 @@ import { renderProxyTokens } from "./features/proxy-tokens.js";
 import { renderModels } from "./features/models.js";
 import { renderStatus } from "./features/status.js";
 import { renderUsage } from "./features/usage.js";
+import { renderLocalTools } from "./features/local-tools.js";
+import { renderApiAnalytics } from "./features/api-analytics.js";
 import { renderEstimates } from "./features/estimates.js";
 import { renderBilling } from "./features/billing.js";
 
 const PAGES = {
   dashboard: renderDashboard, providers: renderProviders, "account-pools": renderAccountPools,
   "local-services": renderLocalServices, "proxy-tokens": renderProxyTokens, models: renderModels,
-  status: renderStatus, usage: renderUsage, estimates: renderEstimates, billing: renderBilling,
+  status: renderStatus, usage: renderUsage, "local-tools": renderLocalTools, "api-analytics": renderApiAnalytics,
+  estimates: renderEstimates, billing: renderBilling,
 };
 
 const root = document.getElementById("root");

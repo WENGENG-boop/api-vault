@@ -46,6 +46,11 @@ export const api = {
 
   async getState() { return store.mode === "live" ? request("/api/state") : clone(S()); },
 
+  async getLocalUsage(days = 7) {
+    if (store.mode === "live") return request(`/api/local-usage?days=${encodeURIComponent(days)}`);
+    await delay(180); return { buckets: [], sessions: [], tools: [], generatedAt: now() }; // demo has no local logs
+  },
+
   async setupVault(password) {
     if (store.mode === "live") return request("/api/vault/setup", { method: "POST", body: { password } });
     await delay(); S().initialized = true; S().unlocked = true; S().adminToken = genId("admin"); tokenStore.set(S().adminToken); return clone(S());
@@ -181,6 +186,25 @@ export const api = {
     await delay(); const a = S().accountPools.find((x) => x.id === id);
     if (a && !a.providerId) { const pid = genId("prov"); a.providerId = pid; S().providers.push({ id: pid, name: a.name, protocol: "openai-compatible", baseUrl: a.baseUrl, currency: "USD", balanceConfig: defaultBalance(), apiKeys: [], createdAt: now(), updatedAt: now() }); }
     return clone(S());
+  },
+  async importAccountPoolModelsToProxyToken(id, input) {
+    if (store.mode === "live") return request(`/api/account-pools/${encodeURIComponent(id)}/import-models-to-proxy-token`, { method: "POST", body: input });
+    await delay();
+    const pool = S().accountPools.find((x) => x.id === id);
+    const token = S().proxyTokens.find((x) => x.id === input.proxyTokenId);
+    if (!pool || !token) throw new Error("Account pool or proxy token not found");
+    const existing = new Set((token.allowedModels || []).map((rule) => rule.publicModel));
+    const modelNames = input.modelNames || pool.modelNames || [];
+    const added = modelNames.filter((name) => !existing.has(name));
+    token.allowedModels = [...(token.allowedModels || []), ...added.map((name) => ({ publicModel: name, providerId: pool.providerId || "", upstreamModel: name, apiKeyId: "" }))];
+    token.updatedAt = now();
+    return { result: { importedCount: added.length }, state: clone(S()) };
+  },
+  async uploadAccountPoolAuth(id, input) {
+    if (store.mode === "live") return request(`/api/account-pools/${encodeURIComponent(id)}/upload-auth`, { method: "POST", body: input });
+    await delay();
+    if (!S().accountPools.some((x) => x.id === id)) throw new Error("Account pool not found");
+    return { result: { fileName: input.fileName }, state: clone(S()) };
   },
 
   /* local services + cloudflared */

@@ -3,15 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "description": "Local browser API key vault, proxy, and real billing sync demo.",
+  "author": "API Vault",
   "main": "dist-main/electron/main.js",
   "scripts": {
     "dev": "npm run build && node dist-main/server/server.js",
     "dev:renderer": "set NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3210&& next dev --hostname 127.0.0.1",
-    "build:main": "tsc -p tsconfig.main.json",
+    "build:main": "tsc -p tsconfig.main.json && node scripts/copy-parsers.mjs",
     "build:renderer": "next build",
     "build": "npm run build:main && npm run build:renderer",
     "serve": "node dist-main/server/server.js",
     "electron": "npm run build && electron .",
+    "pack:dir": "npm run build && electron-builder --dir",
+    "pack:win": "npm run build && node scripts/package-electron-win.mjs",
     "start": "npm run build && node dist-main/server/server.js",
     "test": "npm run build:main && node --test tests/*.test.cjs"
   },
@@ -24,7 +27,35 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
     "next": "^16.2.6",
     "typescript": "6.0.3"
+  },
+  "build": {
+    "appId": "com.apivault.desktop",
+    "productName": "API Vault",
+    "asar": true,
+    "directories": {
+      "output": "release-electron"
+    },
+    "files": [
+      "dist-main/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "out",
+        "to": "out",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "portable"
+      ]
+    }
   }
 }

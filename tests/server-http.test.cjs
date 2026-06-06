@@ -20,6 +20,28 @@ async function close(server) {
   }
 }
 
+async function requestWithHost(port, route, headers = {}) {
+  return await new Promise((resolve, reject) => {
+    const req = http.request({
+      host: "127.0.0.1",
+      port,
+      path: route,
+      method: "GET",
+      headers
+    }, (res) => {
+      const chunks = [];
+      res.on("data", (chunk) => chunks.push(chunk));
+      res.on("end", () => resolve({
+        status: res.statusCode,
+        headers: res.headers,
+        body: Buffer.concat(chunks).toString("utf8")
+      }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
 const adminTokens = new Map();
 
 async function requestJson(baseUrl, route, options = {}) {
@@ -931,6 +953,13 @@ test("HTTP API CORS defaults to the current local service origin", async () => {
       headers: { origin: "http://localhost:9999" }
     });
     assert.equal(otherOrigin.headers.get("access-control-allow-origin"), null);
+
+    const rebinding = await requestWithHost(apiPort, "/api/state", {
+      host: `evil.example:${apiPort}`,
+      origin: `http://evil.example:${apiPort}`
+    });
+    assert.equal(rebinding.status, 403);
+    assert.equal(rebinding.headers["access-control-allow-origin"], undefined);
   } finally {
     proxy.stop();
     await close(api);
@@ -1395,6 +1424,7 @@ test("public proxy preserves multimodal image inputs across OpenAI and Anthropic
     const proxySecret = result.data.secret;
     const publicBase = `http://127.0.0.1:${proxy.getPort()}/proxy/v1`;
 
+    const imageDataUrl = `data:image/png;base64,${imageBytes.toString("base64")}`;
     let response = await fetch(`${publicBase}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${proxySecret}` },
@@ -1404,7 +1434,7 @@ test("public proxy preserves multimodal image inputs across OpenAI and Anthropic
           role: "user",
           content: [
             { type: "text", text: "describe this" },
-            { type: "image_url", image_url: { url: `http://127.0.0.1:${upstreamPort}/image.png` } }
+            { type: "image_url", image_url: { url: imageDataUrl } }
           ]
         }]
       })
@@ -1424,7 +1454,7 @@ test("public proxy preserves multimodal image inputs across OpenAI and Anthropic
           role: "user",
           content: [
             { type: "text", text: "anthropic url image" },
-            { type: "image", source: { type: "url", url: `http://127.0.0.1:${upstreamPort}/image.png` } }
+            { type: "image", source: { type: "url", url: imageDataUrl } }
           ]
         }]
       })
@@ -1468,6 +1498,98 @@ test("public proxy preserves multimodal image inputs across OpenAI and Anthropic
     assert.equal(openaiHit.body.model, "gpt-real");
     assert.equal(openaiHit.body.messages[0].content[1].type, "image_url");
     assert.equal(openaiHit.body.messages[0].content[1].image_url.url, "data:image/jpeg;base64,aW1hZ2U=");
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("public proxy rejects private network image URLs during multimodal conversion", async () => {
+  const upstream = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url === "/image.png") {
+      res.writeHead(200, { "content-type": "image/png" });
+      res.end("private-image");
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({
+      id: "msg_private",
+      type: "message",
+      role: "assistant",
+      model: "claude-real",
+      content: [{ type: "text", text: "should not be reached" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1 }
+    }));
+  });
+
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-private-image-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, "/api/providers/add-key", {
+      method: "POST",
+      body: {
+        providerName: "Anthropic Vision",
+        keyName: "anthropic",
+        protocol: "anthropic-compatible",
+        baseUrl: `http://127.0.0.1:${upstreamPort}/anthropic`,
+        currency: "USD",
+        apiKey: "sk-anthropic",
+        balanceConfig: { enabled: false }
+      }
+    });
+    assert.equal(result.status, 200);
+    const provider = result.data.providers[0];
+    const key = provider.apiKeys[0];
+
+    result = await requestJson(apiBase, "/api/proxy-tokens", {
+      method: "POST",
+      body: {
+        name: "vision clients",
+        allowedModels: [{
+          publicModel: "public-claude-vision",
+          providerId: provider.id,
+          apiKeyId: key.id,
+          upstreamModel: "claude-real"
+        }],
+        allowStreaming: false,
+        requestsPerMinute: 60,
+        requestsPerDay: 1000
+      }
+    });
+    assert.equal(result.status, 200);
+
+    const response = await fetch(`http://127.0.0.1:${proxy.getPort()}/proxy/v1/chat/completions`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${result.data.secret}` },
+      body: JSON.stringify({
+        model: "public-claude-vision",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "describe this" },
+            { type: "image_url", image_url: { url: `http://127.0.0.1:${upstreamPort}/image.png` } }
+          ]
+        }]
+      })
+    });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /private|local|not allowed/i);
   } finally {
     proxy.stop();
     await close(api);
@@ -1532,8 +1654,62 @@ test("successful unlocks do not consume auth failure quota", async () => {
   }
 });
 
+test("local service proxy strips management and client credentials before injecting stored key", async () => {
+  resetAuthLimiter();
+  let upstreamHeaders;
+  const upstream = http.createServer((req, res) => {
+    upstreamHeaders = req.headers;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+  });
 
+  const upstreamPort = await listen(upstream);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-local-proxy-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const proxy = new ProxyServer(store);
+  await proxy.start();
+  const api = createApiServer({ store, proxy });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
 
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
 
+    result = await requestJson(apiBase, "/api/local-services", {
+      method: "POST",
+      body: {
+        name: "Local upstream",
+        baseUrl: `http://127.0.0.1:${upstreamPort}`,
+        type: "openai-compatible",
+        apiKey: "local-real-key"
+      }
+    });
+    assert.equal(result.status, 200);
+
+    result = await requestJson(apiBase, `/api/proxy/local/${result.data.service.id}/v1/models`, {
+      headers: {
+        authorization: "Bearer client-placeholder",
+        cookie: "session=browser-secret",
+        "proxy-authorization": "Basic proxy-secret",
+        "x-provider-api-key": "provider-secret"
+      }
+    });
+    assert.equal(result.status, 200);
+    assert.equal(upstreamHeaders.authorization, "Bearer local-real-key");
+    assert.equal(upstreamHeaders["x-api-vault-admin"], undefined);
+    assert.equal(upstreamHeaders.cookie, undefined);
+    assert.equal(upstreamHeaders["proxy-authorization"], undefined);
+    assert.equal(upstreamHeaders["x-provider-api-key"], undefined);
+  } finally {
+    proxy.stop();
+    await close(api);
+    await close(upstream);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
 
 

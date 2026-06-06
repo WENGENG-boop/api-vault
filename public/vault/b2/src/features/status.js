@@ -1,7 +1,7 @@
 // features/status.js — health & latency monitoring (providers / models / connection latency).
 import { h, icon } from "../dom.js";
 import { ui, setUi } from "../store.js";
-import { compact, int, pct, ms, relTime, latencyClass } from "../format.js";
+import { compact, int, pct, ms, relTime, dateTime, latencyClass } from "../format.js";
 import * as A from "../analytics.js";
 import { card, stat, badge, dot, segmented, chips, searchBox, sparkline, uptimeBar, table } from "../ui.js";
 
@@ -102,7 +102,7 @@ function entityBody(r) {
     h("div.mt4", card({ title: `Recent requests (${r.recent.length})`, flush: true },
       table([{ label: "Time" }, { label: "Model" }, { label: "Status" }, { label: "Latency", num: true }],
         r.recent, (e) => h("tr",
-          h("td", h("span.muted", relTime(e.startedAt))),
+          h("td", h("span.muted", dateTime(e.startedAt))),
           h("td", h("code.cell-mono", e.model || "—")),
           h("td", badge(String(e.status), e.ok ? "ok" : "err")),
           h("td.num", { class: latencyClass(e.latencyMs) }, ms(e.latencyMs))), { emptyText: "No requests" }))));

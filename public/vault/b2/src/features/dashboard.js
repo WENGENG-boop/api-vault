@@ -1,61 +1,40 @@
-// features/dashboard.js — Action Center, KPI cards, daily trend, heatmap, distributions, connection status.
+// features/dashboard.js — operational landing page: an at-a-glance view of the
+// gateway's CURRENT state (proxy / tunnel / provider health), a short activity
+// snapshot and the most recent requests. Deep trend / heatmap / distribution
+// analysis lives in the dedicated API Analytics tab, so the dashboard stays a
+// fast "what's happening right now" overview rather than a second analytics page.
 import { h, icon } from "../dom.js";
 import { store, ui, setUi, set, emit } from "../store.js";
 import { catOf } from "../shell.js";
 import { api } from "../api.js";
-import { compact, int, money, ms, dur, relTime, latencyClass, tokensOf } from "../format.js";
-import * as A from "../analytics.js";
+import { compact, int, money, ms, relTime, dateTime, latencyClass, tokensOf } from "../format.js";
+import { rangeStart } from "../analytics.js";
 import { estimateEventCost, catalogIndex } from "../pricing.js";
-import { card, badge, segmented, kpiCard, stackedBars, heatmap, donutList, dot, withBusy, toast } from "../ui.js";
+import { card, badge, kpiCard, dot, segmented, table, withBusy, toast } from "../ui.js";
 
 const nav = (tab) => set({ tab, category: catOf(tab) });
-const RANGES = [{ value: "all", label: "All" }, { value: "30d", label: "30d" }, { value: "7d", label: "7d" }, { value: "today", label: "Today" }];
-const TRI = [{ value: "token", label: "Token" }, { value: "cost", label: "Cost" }, { value: "duration", label: "Duration" }];
-const DUO = [{ value: "token", label: "Token" }, { value: "cost", label: "Cost" }];
-const TREND_COLORS = { output: "var(--accent)", input: "#56b0f6", cached: "#45c463" };
+const RANGES = [{ value: "today", label: "Today" }, { value: "24h", label: "24h" }, { value: "7d", label: "7d" }];
+
+const hostOf = (url) => { try { return new URL(url).host; } catch { return url; } };
 
 export function renderDashboard(s) {
-  const st = ui("dash", { range: "30d", trend: "token", heat: "token", dist: "token" });
+  const st = ui("dash", { range: "7d" });
   const idx = catalogIndex(s.modelCatalog);
   const costOf = (e) => estimateEventCost(e, idx.get(e.model) || idx.get(e.modelId))?.cost ?? 0;
-  const w = A.windowBounds(st.range);
-  const events = A.inRange(s.usageEvents, st.range);
-  const rolls = A.rollupsInWindow(s.usageRollups, w.start, w.end);
-  // Cost & token totals fold in archived rollups, so compacted history is never lost.
-  const cur = mergeBundle(A.bundle(events, costOf), A.rollupTokenCost(s.usageRollups, costOf, w.start, w.end));
-  let pre = null;
-  if (w.prevStart != null) {
-    const prevEvents = s.usageEvents.filter((e) => { const t = +new Date(e.startedAt); return t >= w.prevStart && t < w.prevEnd; });
-    pre = mergeBundle(A.bundle(prevEvents, costOf), A.rollupTokenCost(s.usageRollups, costOf, w.prevStart, w.prevEnd));
-  }
+  const events = dashboardActivityRows(s, st.range);
+  const hasActivity = !!(s.usageEvents?.length || s.usageRollups?.length);
 
   return h("div.stack",
     h("div.page-head",
-      h("div.titles", h("h1", "Dashboard"), h("div.sub", "Usage, spend and activity across your gateway")),
-      h("div.actions", segmented(RANGES, st.range, (range) => setUi("dash", { range })))),
+      h("div.titles", h("h1", "Dashboard"), h("div.sub", "Live status of your gateway at a glance")),
+      h("div.actions",
+        h("button.btn.sm", { onClick: () => nav("api-analytics") }, icon("activity", 14), "Open API Analytics"))),
     actionCenter(s),
-    s.usageEvents.length || rolls.length ? null : guidanceBanner(s),
-    kpiRows(cur, pre, st),
-    trendCard(s.usageEvents, st, costOf),
-    heatCard(events, st, costOf),
-    distributions(events.concat(rolls), st, costOf),
+    liveStatus(s),
+    hasActivity ? snapshot(st, events, costOf) : guidanceBanner(s),
+    s.usageEvents.length ? recentActivity(s) : null,
     connectionCard(s),
   );
-}
-
-// Token / cost / message totals = live events + archived rollups (no data loss).
-// Session / time metrics stay event-based (rollups hold no per-request timestamps).
-function mergeBundle(b, r) {
-  return {
-    ...b,
-    estCost: b.estCost + r.estCost,
-    totalTokens: b.totalTokens + r.totalTokens,
-    input: b.input + r.input,
-    output: b.output + r.output,
-    cached: b.cached + r.cached,
-    userMessages: b.userMessages + r.calls,
-    totalMessages: b.totalMessages + r.calls * 2,
-  };
 }
 
 /* --------------------------- Action Center --------------------------- */
@@ -74,11 +53,11 @@ function dismissAction(key, sig) {
 function actionCenter(s) {
   const items = [];
   if (!s.providers.length)
-    items.push(act("err", "providers", "No providers yet", "Add an upstream provider and API key to start routing.", "Add Provider", () => nav("providers")));
+    items.push(dismissibleAction("providers", "missing", "err", "providers", "No providers yet", "Add an upstream provider and API key to start routing.", "Add Provider", () => nav("providers")));
   else if (!s.proxyTokens.length)
-    items.push(act("warn", "tokens", "Create a proxy token", "You have providers but no proxy token to expose them safely.", "Create Token", () => nav("proxy-tokens")));
+    items.push(dismissibleAction("tokens", s.providers.map((p) => p.id).join("|") || "providers", "warn", "tokens", "Create a proxy token", "You have providers but no proxy token to expose them safely.", "Create Token", () => nav("proxy-tokens")));
   else if (!s.proxyTokens.some((t) => t.allowedModels?.length))
-    items.push(act("warn", "models", "Configure model mapping", "Map public model names to upstream models on a token.", "Configure", () => nav("proxy-tokens")));
+    items.push(dismissibleAction("models", s.proxyTokens.map((t) => `${t.id}:${t.updatedAt || ""}`).join("|") || "tokens", "warn", "models", "Configure model mapping", "Map public model names to upstream models on a token.", "Configure", () => nav("proxy-tokens")));
 
   const fail = s.usageEvents.find((e) => !e.ok);
   if (fail) {
@@ -89,14 +68,24 @@ function actionCenter(s) {
       items.push(act("err", "alert", `${failCount} failed request${failCount > 1 ? "s" : ""}`, `Latest: ${fail.status} · ${fail.model || "—"} · ${fail.error || "error"}`, "View Usage", () => nav("usage"), () => dismissAction("failed", sig)));
     }
   }
-  if (s.localServices.length && !s.cloudflared?.running)
+  if (s.localServices.length && !s.cloudflared?.running) {
+    const item = dismissibleAction("tunnel", s.localServices.map((l) => `${l.id}:${l.updatedAt || ""}`).join("|") || "local", "warn", "globe", "Tunnel is off", "You run local services but Cloudflared is not active; they are not reachable publicly.", "Start Tunnel", () => nav("local-services"));
+    if (item) items.push(item);
+  }
+  /*
     items.push(act("warn", "globe", "Tunnel is off", "You run local services but Cloudflared is not active — they aren't reachable publicly.", "Start Tunnel", () => nav("local-services")));
 
-  if (!items.length)
-    items.push(act("ok", "check", "All systems go", "Providers, tokens and tunnel are configured. Nothing needs attention.", null, null));
+  */
+  const visible = items.filter(Boolean);
+  if (!visible.length) return null;
 
   return card({ title: h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, icon("zap", 15), "Action Center") },
-    h("div.actions-center", items));
+    h("div.actions-center", visible));
+}
+
+function dismissibleAction(key, sig, kind, ic, title, desc, btnLabel, onClick) {
+  if (isDismissed(key, sig)) return null;
+  return act(kind, ic, title, desc, btnLabel, onClick, () => dismissAction(key, sig));
 }
 
 function act(kind, ic, title, desc, btnLabel, onClick, onDismiss) {
@@ -109,8 +98,7 @@ function act(kind, ic, title, desc, btnLabel, onClick, onDismiss) {
     trailing.length ? h("div.ai-actions", trailing) : null);
 }
 
-// Disabled-state guidance: when there is no usage to chart, point the user at the next step
-// instead of hiding the dashboard.
+// Disabled-state guidance: when there is no usage yet, point at the next step.
 function guidanceBanner(s) {
   const next = !s.providers.length
     ? { msg: "Add an upstream provider and API key to start routing requests.", label: "Add provider", tab: "providers" }
@@ -123,88 +111,131 @@ function guidanceBanner(s) {
     h("div.ai-actions", h("button.btn.sm", { onClick: () => nav(next.tab) }, next.label, icon("chevron", 13))));
 }
 
-/* --------------------------- KPI cards --------------------------- */
-function kpiRows(cur, pre, st) {
-  const noCmp = st.range === "all" || !pre;
-  const d = (key) => (noCmp ? null : pctChange(cur[key], pre[key]));
-  return h("div.stack.tight",
-    h("div.grid.cols-5",
-      kpiCard({ label: "Est. cost", value: "≈ " + money(cur.estCost), info: "Projected from the built-in pricing table — estimate only, not billed.", delta: d("estCost") }),
-      kpiCard({ label: "Total tokens", value: compact(cur.totalTokens), delta: d("totalTokens") }),
-      kpiCard({ label: "Input tokens", value: compact(cur.input), delta: d("input") }),
-      kpiCard({ label: "Output tokens", value: compact(cur.output), delta: d("output") }),
-      kpiCard({ label: "Cached tokens", value: compact(cur.cached), info: "Cached input tokens, billed at the cheaper cached rate.", delta: d("cached") })),
-    h("div.grid.cols-5",
-      kpiCard({ label: "Active time", value: dur(cur.activeMs), info: "Time spent inside active sessions (a gap over 30 min starts a new session).", delta: d("activeMs") }),
-      kpiCard({ label: "Total span", value: dur(cur.totalMs), info: "Wall-clock from the first to the last request in range.", delta: d("totalMs") }),
-      kpiCard({ label: "Sessions", value: int(cur.sessions), info: "Requests grouped by activity; a gap over 30 min starts a new session.", delta: d("sessions") }),
-      kpiCard({ label: "Total messages", value: int(cur.totalMessages), info: "Counts each request as one user message plus one assistant reply.", delta: d("totalMessages") }),
-      kpiCard({ label: "User messages", value: int(cur.userMessages), info: "One per request you sent through the gateway.", delta: d("userMessages") })));
+/* --------------------------- Live status tiles --------------------------- */
+// The "current state" row: is the proxy up, is the tunnel exposing it, are the
+// upstreams healthy, and how much traffic has been recorded.
+function liveStatus(s) {
+  const provs = s.providers || [];
+  const avail = provs.filter((p) => p.status === "available").length;
+  const down = provs.filter((p) => p.status && p.status !== "available" && p.status !== "unknown").length;
+  const provKind = !provs.length ? "idle" : down === 0 ? "ok" : avail === 0 ? "err" : "warn";
+  const cf = s.cloudflared || {};
+  const totalCalls = s.totals?.totalCalls ?? s.usageEvents.length;
+  const failed = s.totals?.failedCalls ?? s.usageEvents.filter((e) => !e.ok).length;
+
+  return h("div.status-grid",
+    tile(s.proxyPort ? "ok" : "idle", "Proxy gateway",
+      s.proxyPort ? `127.0.0.1:${s.proxyPort}` : "Not running",
+      s.proxyPort ? "Local endpoint live" : "Proxy not started"),
+    tile(cf.running ? "ok" : "idle", "Public tunnel",
+      cf.running && cf.publicUrl ? hostOf(cf.publicUrl) : "Off",
+      cf.running ? "Cloudflared active" : "Not exposed publicly"),
+    tile(provKind, "Providers",
+      provs.length ? `${avail}/${provs.length} healthy` : "None",
+      down ? `${down} unreachable` : provs.length ? "All upstreams reachable" : "Add a provider to begin"),
+    tile("idle", "Recorded requests",
+      int(totalCalls),
+      failed ? `${int(failed)} failed` : "No failures recorded"));
 }
 
-function pctChange(cur, prev) {
-  if (prev === 0) return cur > 0 ? { isNew: true } : { pct: 0 };
-  return { pct: ((cur - prev) / prev) * 100 };
+function tile(kind, label, value, sub) {
+  return h("div.status-tile",
+    h("div.st-top", dot(kind), h("span.st-label", label)),
+    h("div.st-value", { attrs: { title: String(value) } }, value),
+    h("div.st-sub", sub));
 }
 
-/* --------------------------- Charts --------------------------- */
-const legendRow = (pairs) => h("div.chart-legend", pairs.map(([name, color]) => h("span.cl-item", h("span.cl-dot", { style: { background: color } }), name)));
+/* --------------------------- Activity snapshot --------------------------- */
+function snapshot(st, events, costOf) {
+  const rows = events.filter(Boolean);
+  const reqs = rows.reduce((a, e) => a + (e.calls || 1), 0);
+  const ok = rows.reduce((a, e) => a + (e.okCalls ?? (e.ok ? 1 : 0)), 0);
+  const success = reqs ? (ok / reqs) * 100 : null;
+  const spend = rows.reduce((a, e) => a + costOf(e), 0);
+  const toks = rows.reduce((a, e) => a + tokensOf(e), 0);
+  const lat = rows.filter((e) => e.latencyMs).map((e) => e.latencyMs);
+  const avgLat = lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : null;
+  const top = topProviderRow(rows);
+  const favoriteModel = favoriteModelRow(rows);
+  const ov = { favoriteModel };
 
-function trendCard(allEvents, st, costOf) {
-  const mode = st.trend;
-  const days = A.dailyStacks(allEvents, 30, costOf);
-  let rows, legend, fmt;
-  if (mode === "cost") {
-    rows = days.map((dy) => ({ label: dy.label, segs: [{ value: dy.cost, color: TREND_COLORS.output }] }));
-    legend = legendRow([["Est. cost", TREND_COLORS.output]]);
-    fmt = (v) => "$" + (v || 0).toFixed(2);
-  } else if (mode === "duration") {
-    rows = days.map((dy) => ({ label: dy.label, segs: [{ value: dy.durMs, color: TREND_COLORS.input }] }));
-    legend = legendRow([["Duration", TREND_COLORS.input]]);
-    fmt = (v) => dur(v);
-  } else {
-    rows = days.map((dy) => ({ label: dy.label, segs: [
-      { value: dy.tout, color: TREND_COLORS.output },
-      { value: dy.tin, color: TREND_COLORS.input },
-      { value: dy.tcached, color: TREND_COLORS.cached },
-    ] }));
-    legend = legendRow([["Output", TREND_COLORS.output], ["Input", TREND_COLORS.input], ["Cached", TREND_COLORS.cached]]);
-    fmt = (v) => compact(v);
-  }
-  const axis = [days[0]?.label, days[Math.floor(days.length / 2)]?.label, days[days.length - 1]?.label];
-  return card({
-    title: h("span", "Daily trend ", h("span.muted", { style: { fontWeight: 400, fontSize: "var(--fz-sm)" } }, "· last 30 days")),
-    actions: h("div.row", { style: { gap: "var(--s4)" } }, legend, segmented(TRI, mode, (v) => setUi("dash", { trend: v }))),
-  }, stackedBars(rows, { axis, fmt }));
-}
-
-function heatCard(events, st, costOf) {
-  const mode = st.heat;
-  const valueOf = mode === "cost" ? costOf : mode === "duration" ? (e) => e.latencyMs || 0 : (e) => tokensOf(e);
-  const fmt = mode === "cost" ? (v) => "$" + (v || 0).toFixed(2) : mode === "duration" ? dur : (v) => compact(v);
-  return card({
-    title: h("span", "Activity heatmap ", h("span.muted", { style: { fontWeight: 400, fontSize: "var(--fz-sm)" } }, "· week × hour")),
-    actions: segmented(TRI, mode, (v) => setUi("dash", { heat: v })),
-  }, heatmap(A.weekHour(events, valueOf), { fmt }));
-}
-
-/* --------------------------- Distributions --------------------------- */
-function distributions(items, st, costOf) {
-  const mode = st.dist;
-  const valueOf = mode === "cost" ? costOf : (e) => tokensOf(e);
-  const fmt = mode === "cost" ? (v) => "≈ $" + (v || 0).toFixed(2) : (v) => compact(v);
-  const centerFmt = mode === "cost" ? (v) => "$" + (v || 0).toFixed(0) : (v) => compact(v);
-  const mk = (title, keyFn, nameFn) => card({ title },
-    donutList(A.distribution(items, keyFn, nameFn, valueOf, 6), { fmt, centerFmt, emptyTitle: "No data in range" }));
   return h("div.stack.tight",
     h("div.spread", { style: { padding: "var(--s2) 0" } },
-      h("h3.section-title", "Distributions"),
-      segmented(DUO, mode, (v) => setUi("dash", { dist: v }))),
-    h("div.grid.cols-2",
-      mk("By provider", (e) => e.providerId, (e) => e.providerName),
-      mk("By model", (e) => e.model || e.modelId, (e) => e.model || e.modelId || "Unknown"),
-      mk("By API key", (e) => e.apiKeyId, (e) => e.apiKeyName || e.apiKeyMasked || "Key"),
-      mk("By proxy token", (e) => e.proxyTokenName || e.proxyTokenId, (e) => e.proxyTokenName || "Direct")));
+      h("h3.section-title", "Activity snapshot"),
+      segmented(RANGES, st.range, (range) => setUi("dash", { range }))),
+    h("div.grid.cols-4",
+      kpiCard({ label: "Requests", value: int(reqs) }),
+      kpiCard({ label: "Success rate", value: success == null ? "—" : success.toFixed(1) + "%" }),
+      kpiCard({ label: "Est. spend", value: "≈ " + money(spend), info: "Projected from the built-in pricing table — estimate only, not billed." }),
+      kpiCard({ label: "Tokens", value: compact(toks) })),
+    h("div.grid.cols-3",
+      kpiCard({ label: "Avg latency", value: avgLat == null ? "—" : ms(avgLat) }),
+      kpiCard({ label: "Top provider", value: top?.name || "—" }),
+      kpiCard({ label: "Most-used model", value: ov.favoriteModel || "—" })));
+}
+
+function dashboardActivityRows(s, range) {
+  const start = rangeStart(range);
+  const live = (s.usageEvents || [])
+    .filter((e) => !start || new Date(e.startedAt).getTime() >= start)
+    .map((e) => ({ ...e, calls: 1, okCalls: e.ok ? 1 : 0, failedCalls: e.ok ? 0 : 1 }));
+  const period = range === "7d" ? "week" : "month";
+  const rollups = (s.usageRollups || []).filter((rollup) => {
+    if (rollup.period !== period) return false;
+    const t = new Date(rollup.bucketStart).getTime();
+    return Number.isFinite(t) && (!start || t >= start);
+  }).map((rollup) => ({
+    ...rollup,
+    startedAt: rollup.bucketStart,
+    ok: rollup.failedCalls === 0,
+    status: rollup.failedCalls ? 500 : 200,
+  }));
+  return [...live, ...rollups];
+}
+
+function topProviderRow(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = row.providerId || row.providerName || "unknown";
+    const cur = map.get(key) || { name: row.providerName || key, total: 0, calls: 0 };
+    cur.total += tokensOf(row);
+    cur.calls += row.calls || 1;
+    map.set(key, cur);
+  }
+  return [...map.values()].sort((a, b) => b.total - a.total || b.calls - a.calls)[0] || null;
+}
+
+function favoriteModelRow(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const model = row.model;
+    if (!model) continue;
+    map.set(model, (map.get(model) || 0) + (row.calls || 1));
+  }
+  return [...map.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+}
+
+/* --------------------------- Recent requests --------------------------- */
+function recentActivity(s) {
+  const events = [...s.usageEvents]
+    .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))
+    .slice(0, 8);
+  return card({
+    title: "Recent requests",
+    actions: h("button.btn.xs", { onClick: () => nav("usage") }, "View all", icon("chevron", 12)),
+    flush: true,
+  },
+    table(
+      [{ label: "Time" }, { label: "Provider" }, { label: "Model" }, { label: "Status" }, { label: "Tokens", num: true }, { label: "Latency", num: true }],
+      events,
+      (e) => h("tr.clickable", { onClick: () => nav("usage") },
+        h("td", { style: { whiteSpace: "nowrap" } }, h("span.muted", dateTime(e.startedAt))),
+        h("td", e.providerName || "—"),
+        h("td", h("code.cell-mono", e.model || "—")),
+        h("td", badge(String(e.status), e.ok ? "ok" : "err")),
+        h("td.num", tokensOf(e) ? compact(tokensOf(e)) : "—"),
+        h("td.num", { class: latencyClass(e.latencyMs) }, ms(e.latencyMs))),
+      { emptyText: "No requests yet" }));
 }
 
 /* --------------------------- Connection status --------------------------- */
@@ -213,7 +244,7 @@ function connectionCard(s) {
     ...s.providers.map((p) => ({ id: p.id, name: p.name, baseUrl: p.baseUrl, status: p.status, latencyMs: p.latencyMs, lastCheckedAt: p.lastCheckedAt, local: p.isLocal, kind: "provider" })),
     ...s.localServices.map((l) => ({ id: l.id, name: l.name, baseUrl: l.baseUrl, status: l.status, latencyMs: l.latencyMs, lastCheckedAt: l.lastCheckedAt, local: true, kind: "local" })),
   ];
-  return card({ title: "API connection status", actions: s.cloudflared?.publicUrl && badge("tunnel: " + new URL(s.cloudflared.publicUrl).host, "info") },
+  return card({ title: "API connection status", actions: s.cloudflared?.publicUrl && badge("tunnel: " + hostOf(s.cloudflared.publicUrl), "info") },
     h("div.stack.tight", rows.length ? rows.map((r) => connRow(r)) : h("p.muted", { style: { fontSize: "var(--fz-sm)" } }, "No providers or local services yet.")));
 }
 

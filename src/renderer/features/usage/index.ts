@@ -1,1 +1,0 @@
-export { Usage } from "./page";

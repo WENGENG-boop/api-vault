@@ -3,9 +3,9 @@ import { CloudflaredManager } from "../main/cloudflared";
 import { ProxyServer } from "../main/proxy";
 import { VaultStore } from "../main/store";
 import { DATA_PATH, DEFAULT_PORT, LISTEN_HOST } from "./config/serverConfig";
-import { applyCors } from "./middlewares/cors";
+import { applyCors, isAllowedHost } from "./middlewares/cors";
 import { AdminSessionManager } from "./middlewares/adminSession";
-import { sendError } from "./utils/responses";
+import { sendError, sendText } from "./utils/responses";
 import { serveStatic } from "./utils/staticAssets";
 import { startAutoSync } from "./services/autoSyncService";
 import { handleLocalServiceProxy } from "./services/localServiceProxy";
@@ -28,6 +28,10 @@ export function createApiServer(context: LocalServerContext) {
 }
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, context: LocalServerContext) {
+  if (!isAllowedHost(req.headers.host)) {
+    sendText(res, 403, "Forbidden host");
+    return;
+  }
   if (applyCors(req, res)) return;
 
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "127.0.0.1"}`);
@@ -67,7 +71,7 @@ if (require.main === module) {
   const adminSessions = new AdminSessionManager();
   const server = createApiServer({ store, proxy, cloudflared, adminSessions });
 
-  startAutoSync(store);
+  const stopAutoSync = startAutoSync(store);
   warnIfPublicBindIsRisky(store);
 
   proxy.start()
@@ -87,15 +91,18 @@ if (require.main === module) {
         if (await isApiVaultRunning(DEFAULT_PORT)) {
           console.log(`API Vault is already running at ${url}`);
           openBrowser(url);
+          stopAutoSync();
           proxy.stop();
           return;
         }
         console.error(`Port ${DEFAULT_PORT} is already in use by another application.`);
         console.error("Stop that process or set PORT to one shared API Vault port intentionally.");
+        stopAutoSync();
         proxy.stop();
         process.exit(1);
       }
       console.error(error);
+      stopAutoSync();
       proxy.stop();
       process.exit(1);
     });

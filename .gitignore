@@ -3,16 +3,68 @@ dist/
 dist-main/
 .next/
 out/
+coverage/
+release/
+release-electron*/
+artifacts/
 *.tsbuildinfo
+
+# Local runtime data and temporary state
 .api-vault/
+.tmp-*/
+tmp/
+temp/
 *.log
 npm-debug.log*
+
+# Environment variables and package-manager credentials
 .env
 .env.*
 !.env.example
+.npmrc
+.yarnrc
+.pnpmrc
+.netrc
+
+# Local AI/editor configuration
+.claude/
+.codex/
+.agents/
+.vscode/settings.json
+.idea/
+
+# Secrets, credentials, certificates, and local databases
+secrets/
+credentials/
+auths/
+vault.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.cer
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-*
+
+# OS and browser scratch data
 .DS_Store
 Thumbs.db
-.claude/worktrees/
+.chrome-*/
+.edge-*/
 
 # Scratch design references (not app assets)
 vault-redesign-auth.png
+
+# Accidental shell scratch files
+/(v
+/[(][{]
+/String(a.name).localeCompare(String(b.name)))
+/a
+/range
+/sel.has(m)).length
+/testRow(btn

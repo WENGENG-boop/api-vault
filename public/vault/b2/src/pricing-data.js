@@ -1,4 +1,4 @@
-// pricing-data.js — AUTO-GENERATED from vibe-usage-model-pricing CSV. Do not edit by hand.
+// pricing-data.js - API Vault's bundled local model-pricing table. Do not edit by hand.
 // Columns: model, vendor, input ($/M tokens), output ($/M tokens), cached read ($/M tokens).
 export const PRICING_TABLE = [
   { model: "claude-3-haiku", vendor: "Anthropic", input: 0.25, output: 1.25, cached: 0.03 },
@@ -140,4 +140,4 @@ export const PRICING_TABLE = [
   { model: "mimo-v2.5", vendor: "Xiaomi", input: 0.14, output: 0.28, cached: 0.0028 },
   { model: "mimo-v2.5-pro", vendor: "Xiaomi", input: 0.435, output: 0.87, cached: 0.0036 },
 ];
-export const PRICING_SOURCE = "vibe-usage-model-pricing";
+export const PRICING_SOURCE = "api-vault-local-pricing";

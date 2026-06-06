@@ -15,15 +15,22 @@ cd C:\Users\eason\Desktop\项目\api-vault-github
 Then run:
 
 ```powershell
-git init
-git branch -M main
-git add .
-git commit -m "Initial API Vault release"
-git remote add origin https://github.com/WENGENG-boop/api-vault.git
-git push -u origin main
+git status --short
+git add -A
+git diff --cached --name-only
+git diff --cached
+git commit -m "Update API Vault"
+git push
 ```
 
-If Git asks you to sign in, follow the browser login prompt from Git Credential Manager.
+Review the staged file list and diff before committing. Never commit `.api-vault/`,
+`.env*`, local databases, certificates, credentials, or local tool settings.
+
+If GitHub authentication has expired, run:
+
+```powershell
+gh auth login -h github.com
+```
 
 ## What This Folder Contains
 
@@ -38,6 +45,13 @@ dist/
 dist-main/
 tools/
 .claude/
+.codex/
+.agents/
+.env*
+*.db
+*.sqlite*
+*.pem
+*.key
 *.log
 ```
 

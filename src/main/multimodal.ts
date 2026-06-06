@@ -1,3 +1,5 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import type { ApiProtocol } from "../shared/types";
 
 type SingleProtocol = Exclude<ApiProtocol, "openai-anthropic-compatible">;
@@ -235,16 +237,77 @@ async function imageUrlToBase64Source(url: string): Promise<Record<string, strin
   if (dataUrlMatch) {
     return { type: "base64", media_type: dataUrlMatch[1], data: dataUrlMatch[2] };
   }
-  if (!/^https?:\/\//i.test(url)) {
+  const parsed = parseImageUrl(url);
+  if (!parsed) {
     throw new Error("Image URL must be http, https, or a base64 data URL");
   }
-  const response = await fetch(url, { signal: AbortSignal.timeout(imageFetchTimeoutMs()) });
+  const response = await fetchImageUrl(parsed);
   if (!response.ok) throw new Error(`Image URL fetch failed with HTTP ${response.status}`);
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim() || mediaTypeFromUrl(url);
   if (!contentType.startsWith("image/")) throw new Error(`Image URL returned non-image content-type: ${contentType}`);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (buffer.length > maxImageBytes()) throw new Error(`Image URL is too large (${buffer.length} bytes)`);
+  const buffer = await readLimitedResponse(response, maxImageBytes());
   return { type: "base64", media_type: contentType, data: buffer.toString("base64") };
+}
+
+function parseImageUrl(url: string): URL | undefined {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchImageUrl(initialUrl: URL): Promise<Response> {
+  let current = initialUrl;
+  for (let redirects = 0; redirects <= maxImageRedirects(); redirects++) {
+    await assertSafeImageFetchTarget(current);
+    const response = await fetch(current, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(imageFetchTimeoutMs())
+    });
+    if (!isRedirect(response.status)) return response;
+    const location = response.headers.get("location");
+    if (!location) return response;
+    current = new URL(location, current);
+  }
+  throw new Error("Image URL redirected too many times");
+}
+
+async function assertSafeImageFetchTarget(url: URL): Promise<void> {
+  if (url.username || url.password) throw new Error("Image URL credentials are not allowed");
+  if (isLocalOrPrivateHostname(url.hostname)) {
+    throw new Error("Image URL target is private or local and is not allowed");
+  }
+  // SECURITY: resolve hostnames before fetching so public proxy users cannot
+  // turn image conversion into SSRF against loopback or private networks.
+  const addresses = isIP(url.hostname)
+    ? [{ address: url.hostname }]
+    : await lookup(url.hostname, { all: true, verbatim: true });
+  if (addresses.length === 0 || addresses.some((item) => isPrivateAddress(item.address))) {
+    throw new Error("Image URL target is private or local and is not allowed");
+  }
+}
+
+async function readLimitedResponse(response: Response, limit: number): Promise<Buffer> {
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > limit) {
+    throw new Error(`Image URL is too large (${contentLength} bytes)`);
+  }
+  if (!response.body) return Buffer.alloc(0);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of response.body as never as AsyncIterable<Uint8Array>) {
+    const buffer = Buffer.from(chunk);
+    total += buffer.length;
+    if (total > limit) throw new Error(`Image URL is too large (${total} bytes)`);
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks);
+}
+
+function isRedirect(status: number): boolean {
+  return status === 301 || status === 302 || status === 303 || status === 307 || status === 308;
 }
 
 function extractOpenAiSystem(messages: unknown): string | undefined {
@@ -343,4 +406,43 @@ function maxImageBytes(): number {
 function imageFetchTimeoutMs(): number {
   const value = Number(process.env.API_VAULT_IMAGE_FETCH_TIMEOUT_MS || 15_000);
   return Number.isFinite(value) && value > 0 ? value : 15_000;
+}
+
+function maxImageRedirects(): number {
+  const value = Number(process.env.API_VAULT_IMAGE_FETCH_MAX_REDIRECTS || 3);
+  return Number.isFinite(value) && value >= 0 ? value : 3;
+}
+
+function isLocalOrPrivateHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  return host === "localhost" || host === "localhost.localdomain";
+}
+
+function isPrivateAddress(address: string): boolean {
+  if (address.includes(":")) return isPrivateIpv6(address);
+  return isPrivateIpv4(address);
+}
+
+function isPrivateIpv4(address: string): boolean {
+  const parts = address.split(".").map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+  const [a, b] = parts;
+  if (a === 0 || a === 10 || a === 127) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 198 && (b === 18 || b === 19)) return true;
+  if (a >= 224) return true;
+  return false;
+}
+
+function isPrivateIpv6(address: string): boolean {
+  const normalized = address.toLowerCase();
+  if (normalized === "::" || normalized === "::1") return true;
+  if (normalized.startsWith("fe80:") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) return true;
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+  if (normalized.startsWith("ff")) return true;
+  const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  return mapped ? isPrivateIpv4(mapped[1]) : false;
 }

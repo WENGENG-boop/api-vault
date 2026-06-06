@@ -406,11 +406,14 @@ API Vault 支持自定义同步规则：
 
 ```text
 src/
+  app/        Next.js 官网入口
+  electron/   可选 Electron 桌面端封装
   main/       vault、proxy、balance、usage 等核心逻辑
-  renderer/   浏览器前端界面
   server/     本地 HTTP 服务
   shared/     前后端共享类型
 
+public/vault/ 浏览器管理后台
+website/      官网资源
 tests/        Node 测试文件
 
 Dockerfile
@@ -504,4 +507,3 @@ oAutoUpdate（可选）
 - PROCESS_EXITED
 - PROCESS_ERROR
 - MANAGER_UNAVAILABLE
-

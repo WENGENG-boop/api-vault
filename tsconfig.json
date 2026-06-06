@@ -29,7 +29,6 @@
   "include": [
     "next-env.d.ts",
     "src/app",
-    "src/renderer",
     "src/shared",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"

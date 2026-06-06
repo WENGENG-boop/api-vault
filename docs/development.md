@@ -15,7 +15,7 @@ Two separate TypeScript projects:
 | Config | Scope | Output |
 |--------|-------|--------|
 | `tsconfig.main.json` | `src/main`, `src/server`, `src/shared`, `src/electron` | `dist-main/` |
-| `tsconfig.json` | Next.js renderer (`src/app`, `src/renderer`) | `.next/` → `out/` |
+| `tsconfig.json` | Next.js landing page (`src/app`) | `.next/` → `out/` |
 
 ## Scripts
 
@@ -27,15 +27,21 @@ npm run serve           # run dist-main/server/server.js
 npm run dev             # build, then serve
 npm run dev:renderer    # next dev against a separately running server
 npm run electron        # build, then launch Electron
+npm run pack:dir        # build an unpacked Electron app
+npm run pack:win        # build artifacts/electron/API Vault <version>.exe
 npm test                # build:main, then node --test tests/*.test.cjs
 npm start               # build, then serve
 ```
+
+Electron packages include `dist-main/` inside the application archive and copy
+the static frontend to `resources/out/`. Packaged vault data is stored in
+Electron's per-user `userData` directory rather than beside the executable.
 
 ## Typecheck
 
 ```bash
 npx tsc --noEmit -p tsconfig.main.json   # backend
-npx tsc --noEmit -p tsconfig.json        # renderer
+npx tsc --noEmit -p tsconfig.json        # Next.js landing page
 ```
 
 Both must be clean before committing.
@@ -70,8 +76,7 @@ tests that assert exact counts must reset that state for isolation — see
    `requireAdminSession` line depending on whether it needs auth).
 2. Implement the operation on `VaultStore` (`src/main/store.ts`) so persistence
    and encryption stay centralized.
-3. Add a matching method to the renderer's `apiClient`
-   (`src/renderer/shared/api/apiClient.ts`).
+3. Add the matching management-console request in `public/vault/b2/src/api.js`.
 4. Add a test in `tests/`.
 
 ## Project Structure Reference

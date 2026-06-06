@@ -87,7 +87,7 @@
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field label, .lbl { font-size: var(--fz-sm); font-weight: 500; color: var(--text-dim); }
 .field .hint { font-size: var(--fz-xs); color: var(--text-mute); }
-input[type=text], input[type=password], input[type=number], input[type=url], select, textarea {
+input[type=text], input[type=password], input[type=number], input[type=url], input[type=datetime-local], select, textarea {
   font-family: inherit; font-size: var(--fz-base); color: var(--text);
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r1);
   padding: 9px 11px; width: 100%; transition: border-color .12s, box-shadow .12s;
@@ -200,6 +200,17 @@ table.tbl .cell-mono { font-family: var(--mono); font-size: var(--fz-xs); color:
 .kpi-delta.down { color: var(--err); background: var(--err-soft); }
 .kpi-value { font-size: var(--fz-2xl); font-weight: 600; letter-spacing: -.02em; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--text); }
 
+/* live status tiles (dashboard "current state" row) */
+.status-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s4); }
+@media (max-width: 1080px) { .status-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px)  { .status-grid { grid-template-columns: 1fr; } }
+.status-tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r3); padding: var(--s4) var(--s5); display: flex; flex-direction: column; gap: 6px; min-width: 0; transition: border-color .14s; }
+.status-tile:hover { border-color: var(--border-strong); }
+.status-tile .st-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.status-tile .st-label { font-size: var(--fz-sm); color: var(--text-mute); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-tile .st-value { font-size: var(--fz-lg); font-weight: 600; color: var(--text); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.status-tile .st-sub { font-size: var(--fz-xs); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 .chart-legend { display: inline-flex; align-items: center; gap: var(--s4); }
 .cl-item { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fz-sm); color: var(--text-dim); }
 .cl-dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
@@ -283,3 +294,111 @@ table.tbl .cell-mono { font-family: var(--mono); font-size: var(--fz-xs); color:
 .skeleton { background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%); background-size: 200% 100%; animation: shim 1.2s infinite; border-radius: var(--r1); }
 @keyframes shim { to { background-position: -200% 0; } }
 details > summary { list-style: none; } details > summary::-webkit-details-marker { display: none; }
+
+/* =====================================================================
+   Local Tools — Vibe Usage skin
+   Scoped under `.lt-vibe`; only the Local Tools tab opts in. Colors use the
+   console's theme variables so it follows light/dark. The structure mirrors
+   the Vibe Usage macOS popover: filter strip · 4 stat cards · bar trend ·
+   donut distributions.
+   ===================================================================== */
+.lt-vibe { gap: var(--s4); }
+.lt-vibe .vu-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r2); }
+
+/* filter strip */
+.lt-vibe .vu-filters { padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
+.lt-vibe .vu-frow { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: flex-start; gap: var(--s3); }
+.lt-vibe .vu-flabel { min-width: 0; display: inline-flex; align-items: center; justify-content: flex-start; gap: 5px; color: var(--text-mute); font-size: var(--fz-sm); padding-top: 4px; white-space: nowrap; }
+.lt-vibe .vu-flabel svg { flex: none; }
+.lt-vibe .vu-ftags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.lt-vibe .vu-pill { border: 0; background: var(--surface-3); color: var(--text-dim); font-size: var(--fz-sm); padding: 3px 11px; border-radius: var(--r-pill); line-height: 1.45; transition: background .12s, color .12s; }
+.lt-vibe .vu-pill:hover { color: var(--text); }
+.lt-vibe .vu-pill.active { background: var(--text); color: var(--bg); font-weight: 500; }
+.lt-vibe .vu-pill.some { background: var(--border-strong); color: var(--text); }
+.lt-vibe .vu-eye, .lt-vibe .vu-chev { display: inline-flex; align-items: center; justify-content: center; background: var(--surface-3); color: var(--text-mute); border: 0; border-radius: var(--r-pill); padding: 4px 9px; }
+.lt-vibe .vu-eye.on { color: var(--text-dim); }
+.lt-vibe .vu-eye:hover, .lt-vibe .vu-chev:hover { color: var(--text); }
+.lt-vibe .vu-chev { padding: 4px 5px; }
+.lt-vibe .vu-chev svg { transition: transform .12s; }
+.lt-vibe .vu-chev.open svg { transform: rotate(180deg); }
+.lt-vibe .vu-custom-range { display: inline-flex; align-items: center; gap: 6px; min-width: min(100%, 420px); }
+.lt-vibe .vu-custom-range input { width: 188px; max-width: 100%; padding: 4px 8px; font-size: var(--fz-xs); line-height: 1.35; }
+.lt-vibe .vu-custom-range span { color: var(--text-mute); font-size: var(--fz-xs); }
+.lt-vibe .vu-clear { align-self: flex-start; margin-left: 124px; background: none; border: 0; color: var(--err); font-size: var(--fz-sm); padding: 2px 0; }
+.lt-vibe .vu-clear:hover { text-decoration: underline; }
+@media (max-width: 640px) {
+  .lt-vibe .vu-frow { grid-template-columns: 1fr; gap: 6px; }
+  .lt-vibe .vu-flabel { padding-top: 0; }
+  .lt-vibe .vu-custom-range { display: grid; grid-template-columns: 1fr; }
+  .lt-vibe .vu-custom-range input { width: 100%; }
+  .lt-vibe .vu-clear { margin-left: 0; }
+}
+
+/* summary stat cards */
+.lt-vibe .vu-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s2); }
+.lt-vibe .vu-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r2); padding: 13px 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lt-vibe .vu-stat-label { font-size: var(--fz-sm); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-vibe .vu-stat-value { font-family: var(--mono); font-size: var(--fz-xl); font-weight: 700; color: var(--text); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-vibe .vu-stat-value.ok { color: var(--ok); }
+.lt-vibe .vu-stat-value.info { color: var(--info); }
+@media (max-width: 760px) { .lt-vibe .vu-summary { grid-template-columns: repeat(2, 1fr); } }
+
+/* capsule segmented toggle */
+.lt-vibe .vu-seg { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-2); border-radius: var(--r-pill); }
+.lt-vibe .vu-seg-btn { border: 0; background: transparent; color: var(--text-mute); font-size: var(--fz-xs); padding: 3px 10px; border-radius: var(--r-pill); transition: background .12s, color .12s; }
+.lt-vibe .vu-seg-btn:hover { color: var(--text-dim); }
+.lt-vibe .vu-seg-btn.active { background: var(--surface-3); color: var(--text); font-weight: 500; }
+
+/* card head (chart + donuts) */
+.lt-vibe .vu-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.lt-vibe .vu-card-title { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fz-base); font-weight: 500; color: var(--text-dim); }
+.lt-vibe .vu-card-title svg { color: var(--text-mute); flex: none; }
+
+/* bar trend */
+.lt-vibe .vu-chart { padding: var(--s4); }
+.lt-vibe .vu-chart-body { display: flex; gap: 6px; margin-top: 14px; }
+.lt-vibe .vu-yaxis { width: 48px; flex: none; height: 150px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; font-family: var(--mono); font-size: var(--fz-xs); color: var(--text-mute); }
+.lt-vibe .vu-plot { flex: 1; min-width: 0; }
+.lt-vibe .vu-bars { height: 150px; display: flex; align-items: flex-end; gap: 2px; overflow: visible; }
+.lt-vibe .vu-bar-col { position: relative; flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; }
+.lt-vibe .vu-bar-col.empty { opacity: .4; }
+
+/* floating hover tooltip (replaces native title; mirrors Vibe Usage) */
+.lt-vibe .vu-bar-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); display: none; z-index: 6; white-space: nowrap; pointer-events: none; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--r1); box-shadow: var(--shadow); padding: 7px 9px; font-size: var(--fz-xs); line-height: 1.5; }
+.lt-vibe .vu-bar-col:hover .vu-bar-tip { display: block; }
+.lt-vibe .vu-tip-title { color: var(--text); font-weight: 600; margin-bottom: 2px; }
+.lt-vibe .vu-tip-total { color: var(--text-dim); }
+.lt-vibe .vu-tip-row { display: flex; gap: 10px; color: var(--text-mute); }
+.lt-vibe .vu-tip-cost { color: var(--ok); }
+.lt-vibe .vu-tip-active { color: var(--info); }
+.lt-vibe .vu-bar-seg { display: block; width: 100%; }
+.lt-vibe .vu-bar-seg.output { background: var(--text); border-radius: 2px 2px 0 0; }
+.lt-vibe .vu-bar-seg.input { background: var(--text-mute); }
+.lt-vibe .vu-bar-seg.cost { background: var(--ok); border-radius: 2px 2px 0 0; }
+.lt-vibe .vu-bar-seg.active { background: var(--info); border-radius: 2px 2px 0 0; }
+.lt-vibe .vu-xaxis { display: flex; gap: 2px; margin-top: 8px; }
+.lt-vibe .vu-xaxis span { flex: 1; min-width: 0; text-align: center; font-size: var(--fz-xs); color: var(--text-mute); white-space: nowrap; overflow: hidden; }
+
+/* donut distributions */
+.lt-vibe .vu-dist { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (max-width: 760px) { .lt-vibe .vu-dist { grid-template-columns: 1fr; } }
+.lt-vibe .vu-dist-card { padding: var(--s4); display: flex; flex-direction: column; gap: 12px; }
+.lt-vibe .vu-dist-body { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.lt-vibe .vu-donut { display: block; flex: none; }
+.lt-vibe .vu-donut-cap { fill: var(--text-mute); font-size: 9px; }
+.lt-vibe .vu-donut-num { fill: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 700; }
+.lt-vibe .vu-legend { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.lt-vibe .vu-leg-row { display: flex; align-items: center; gap: 6px; }
+.lt-vibe .vu-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.lt-vibe .vu-leg-name { flex: 1; min-width: 0; font-size: var(--fz-xs); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt-vibe .vu-leg-val { font-family: var(--mono); font-size: var(--fz-xs); color: var(--text-mute); }
+.lt-vibe .vu-leg-pct { font-family: var(--mono); font-size: var(--fz-xs); color: var(--text-mute); width: 46px; text-align: right; }
+.lt-vibe .vu-dist-empty { height: 80px; display: grid; place-items: center; color: var(--text-mute); font-size: var(--fz-sm); }
+
+/* warning note + empty/error states */
+.lt-vibe .vu-warn { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--warn-soft); background: var(--warn-soft); color: var(--warn); border-radius: var(--r2); font-size: var(--fz-sm); }
+.lt-vibe .vu-warn svg { flex: none; }
+.lt-vibe .vu-empty { padding: 40px 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.lt-vibe .vu-empty-icon { font-size: 28px; color: var(--text-mute); opacity: .6; }
+.lt-vibe .vu-empty h4 { font-size: var(--fz-lg); color: var(--text-dim); font-weight: 600; }
+.lt-vibe .vu-empty p { font-size: var(--fz-sm); color: var(--text-mute); max-width: 52ch; line-height: 1.6; }

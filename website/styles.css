@@ -6,6 +6,10 @@
   src: url("fonts/InterVariable.woff2") format("woff2");
 }
 
+body {
+  margin: 0;
+}
+
 .site-shell {
   --site-bg: #ffffff;
   --site-soft: #f6f7f9;
