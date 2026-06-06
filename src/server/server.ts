@@ -10,7 +10,7 @@ import { serveStatic } from "./utils/staticAssets";
 import { startAutoSync } from "./services/autoSyncService";
 import { handleLocalServiceProxy } from "./services/localServiceProxy";
 import { handleApi } from "./routes/apiRoutes";
-import { isApiVaultRunning, listenFixedPort, localAppUrl, openBrowser, warnIfPublicBindIsRisky } from "./startup";
+import { isApiVaultRunning, listenFixedPort, localAppUrl, openBrowser, warnIfDockerAllowedHostsMissing, warnIfPublicBindIsRisky } from "./startup";
 export interface LocalServerContext {
   store: VaultStore;
   proxy: ProxyServer;
@@ -72,6 +72,7 @@ if (require.main === module) {
   const server = createApiServer({ store, proxy, cloudflared, adminSessions });
 
   const stopAutoSync = startAutoSync(store);
+  warnIfDockerAllowedHostsMissing();
   warnIfPublicBindIsRisky(store);
 
   proxy.start()

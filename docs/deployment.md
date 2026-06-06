@@ -30,6 +30,18 @@ volumes:
 
 So your encrypted vault stays in the project folder and survives restarts.
 
+Docker publishing makes the port reachable, but the server still rejects
+non-local `Host` headers by default. To access it as
+`http://192.168.1.20:3210`, explicitly set the exact value clients send:
+
+```yaml
+environment:
+  API_VAULT_ALLOWED_HOSTS: "192.168.1.20:3210,vault.example.com"
+```
+
+Restart after changing it. When `API_VAULT_DOCKER=1` and this variable is
+unset, startup logs warn that remote requests will receive `403 Forbidden`.
+
 ```bash
 docker compose logs -f      # logs
 docker compose down         # stop
@@ -95,6 +107,8 @@ machine. The service must be reachable at a real address.
 ## Production Notes
 
 - Set a fixed `PORT` and an explicit `BIND_HOST`.
+- Set `API_VAULT_ALLOWED_HOSTS` to every trusted hostname/IP (including a
+  non-default port) used to reach the service.
 - Set `API_VAULT_CORS_ORIGINS` to the exact origins that need browser access.
 - Consider lowering `API_VAULT_ADMIN_SESSION_TTL_MS` for shared machines.
 - Back up `.api-vault/vault.json` (it's encrypted) if the data matters.

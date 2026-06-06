@@ -64,6 +64,18 @@ BIND_HOST=0.0.0.0
 
 If `BIND_HOST=0.0.0.0`, do not expose the management UI directly to the public internet. Put HTTPS and access control in front of it.
 
+Binding or Docker port publishing only makes the socket reachable. API Vault
+also validates the HTTP `Host` header to prevent DNS rebinding. Remote clients
+must be explicitly allowed:
+
+```bash
+API_VAULT_ALLOWED_HOSTS=192.168.1.20:3210,vault.example.com
+```
+
+Use the exact IP/hostname and port clients send. In Docker, add the same
+variable under `environment` in `docker-compose.yml`; otherwise remote requests
+receive `403 Forbidden` even though `3210` is published.
+
 ## Recommended Exposure Options
 
 ### Tailscale

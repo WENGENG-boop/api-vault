@@ -11,6 +11,9 @@ services:
       PORT: "3210"
       HOST: "0.0.0.0"
       API_VAULT_DOCKER: "1"
+      # Remote clients also need their exact Host/IP explicitly allowed.
+      # Example: API_VAULT_ALLOWED_HOSTS: "192.168.1.20:3210,vault.example.com"
+      # API_VAULT_ALLOWED_HOSTS: "192.168.1.20:3210"
       API_VAULT_NO_OPEN: "1"
       NODE_ENV: production
     volumes:

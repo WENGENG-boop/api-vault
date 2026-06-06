@@ -12,6 +12,15 @@ export function warnIfPublicBindIsRisky(store: VaultStore): void {
   console.warn("WARNING: Do not expose the management UI directly to the internet. Put HTTPS, access control, or a private tunnel in front of it.");
 }
 
+export function warnIfDockerAllowedHostsMissing(): void {
+  if (process.env.API_VAULT_DOCKER !== "1" || process.env.API_VAULT_ALLOWED_HOSTS?.trim()) return;
+  console.warn(
+    "WARNING: Docker is listening on 0.0.0.0, but API_VAULT_ALLOWED_HOSTS is unset. " +
+    "Only localhost Host headers are accepted, so remote requests will receive 403. " +
+    "Set API_VAULT_ALLOWED_HOSTS to the exact IP addresses or hostnames clients use."
+  );
+}
+
 export async function listenFixedPort(server: Server, port: number): Promise<number> {
   return new Promise<number>((resolveListen, rejectListen) => {
     const onError = (error: NodeJS.ErrnoException) => {
