@@ -94,6 +94,9 @@ Use nginx, Caddy, or Traefik for HTTPS. Recommended policy:
 - Require extra authentication for `/` and `/api/*`.
 - Set a request body size limit.
 - Keep `API_VAULT_CORS_ORIGINS` empty unless browser clients need CORS.
+- Set `API_VAULT_TRUST_PROXY=1` only when this proxy overwrites or sanitizes
+  `X-Forwarded-For`; API Vault then uses its rightmost value for setup/unlock
+  brute-force limits.
 
 ## Security Notes
 

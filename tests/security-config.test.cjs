@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 
 const { warnIfDockerAllowedHostsMissing } = require("../dist-main/server/startup.js");
 const { isSetupRequestAllowed } = require("../dist-main/server/routes/apiRoutes.js");
+const { authLimiterKey } = require("../dist-main/server/middlewares/authLimiter.js");
 
 test("Docker startup warns when remote Host allowlist is not configured", () => {
   const previousDocker = process.env.API_VAULT_DOCKER;
@@ -54,4 +55,32 @@ test("vault setup only accepts loopback network peers", () => {
   assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "127.0.0.1" } }), true);
   assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "::ffff:127.0.0.1" } }), true);
   assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "192.168.1.50" } }), false);
+});
+
+test("auth limiter ignores forwarded addresses unless proxy trust is explicit", () => {
+  const previous = process.env.API_VAULT_TRUST_PROXY;
+  delete process.env.API_VAULT_TRUST_PROXY;
+  try {
+    assert.equal(authLimiterKey({
+      headers: { "x-forwarded-for": "198.51.100.10, 203.0.113.20" },
+      socket: { remoteAddress: "127.0.0.1" }
+    }), "127.0.0.1");
+  } finally {
+    if (previous === undefined) delete process.env.API_VAULT_TRUST_PROXY;
+    else process.env.API_VAULT_TRUST_PROXY = previous;
+  }
+});
+
+test("trusted proxy auth limiter uses the rightmost forwarded address", () => {
+  const previous = process.env.API_VAULT_TRUST_PROXY;
+  process.env.API_VAULT_TRUST_PROXY = "1";
+  try {
+    assert.equal(authLimiterKey({
+      headers: { "x-forwarded-for": "198.51.100.10, 203.0.113.20" },
+      socket: { remoteAddress: "127.0.0.1" }
+    }), "203.0.113.20");
+  } finally {
+    if (previous === undefined) delete process.env.API_VAULT_TRUST_PROXY;
+    else process.env.API_VAULT_TRUST_PROXY = previous;
+  }
 });

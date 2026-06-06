@@ -44,7 +44,13 @@ export function recordAuthFailure(req: IncomingMessage): void {
   authFailures.consume(authLimiterKey(req));
 }
 
-function authLimiterKey(req: IncomingMessage): string {
+export function authLimiterKey(req: Pick<IncomingMessage, "headers" | "socket">): string {
+  if (process.env.API_VAULT_TRUST_PROXY === "1") {
+    const forwarded = req.headers["x-forwarded-for"];
+    const value = Array.isArray(forwarded) ? forwarded.join(",") : forwarded;
+    const rightmost = value?.split(",").map((item) => item.trim()).filter(Boolean).at(-1);
+    if (rightmost) return rightmost;
+  }
   // Key on the network peer only. The Host header is client-controlled, so
   // including it would let a brute-force attacker reset their bucket each
   // request by rotating Host, defeating the limiter.

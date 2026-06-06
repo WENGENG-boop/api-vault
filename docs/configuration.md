@@ -13,6 +13,7 @@ runtime behavior is controlled by the variables below, read at process start.
 | `API_VAULT_DOCKER` | _(unset)_ | When `1`, the default bind becomes `0.0.0.0` (so the container is reachable). Explicit `BIND_HOST`/`HOST` still win. |
 | `API_VAULT_ALLOWED_HOSTS` | _(unset)_ | Comma-separated `Host` allowlist. When unset, only `localhost`, `127.0.0.1`, and `::1` are accepted to reduce DNS rebinding risk. Set this when running behind a trusted reverse proxy hostname. |
 | `API_VAULT_CORS_ORIGINS` | _(unset)_ | Comma-separated origin allowlist. When set, only these origins get CORS headers. When unset, only the local host and `localhost`/`127.0.0.1` on `PORT` are allowed. |
+| `API_VAULT_TRUST_PROXY` | _(unset)_ | When `1`, authentication rate limits use the rightmost non-empty `X-Forwarded-For` value instead of the socket peer. Enable only behind a trusted proxy that overwrites/sanitizes this header. |
 | `API_VAULT_NO_OPEN` | _(unset)_ | When `1`, do **not** auto-open the browser on startup. |
 
 > **Binding to `0.0.0.0` exposes the management UI to the network.** Always put
