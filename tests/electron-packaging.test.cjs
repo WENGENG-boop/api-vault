@@ -70,6 +70,7 @@ test("multi-platform packaging uses a temporary directory and separates artifact
   assert.match(source, /AppImage/);
   assert.match(source, /x64/);
   assert.match(source, /arm64/);
+  assert.match(source, /"--publish", "never"/);
 });
 
 test("GitHub Actions builds every Electron target and releases v tags", () => {
@@ -84,6 +85,8 @@ test("GitHub Actions builds every Electron target and releases v tags", () => {
   assert.match(workflow, /pack:mac:x64/);
   assert.match(workflow, /pack:mac:arm64/);
   assert.match(workflow, /pack:linux/);
+  assert.match(workflow, /actions\/checkout@v5/);
+  assert.match(workflow, /actions\/setup-node@v5/);
   assert.match(workflow, /softprops\/action-gh-release@v2/);
 });
 

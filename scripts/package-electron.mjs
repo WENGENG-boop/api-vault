@@ -50,6 +50,7 @@ const result = spawnSync(
     builderCli,
     ...target.builderArgs,
     `--${architecture}`,
+    "--publish", "never",
     `--config.directories.output=${output}`
   ],
   {
