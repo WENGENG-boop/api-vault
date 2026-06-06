@@ -96,3 +96,8 @@ test("package metadata uses production naming while preserving the legacy vault 
   assert.doesNotMatch(packageJson.description, /\bdemo\b/i);
   assert.match(cryptoSource, /api-vault-demo-verifier/);
 });
+
+test("admin session validation relies on the keyed hash lookup without an identity comparison", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "..", "src", "server", "middlewares", "adminSession.ts"), "utf8");
+  assert.doesNotMatch(source, /safeEqual\(tokenHash,\s*session\.tokenHash\)/);
+});

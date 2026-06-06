@@ -1,11 +1,10 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { unauthorized } from "../../main/errors";
 
 const DEFAULT_ADMIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 interface AdminSession {
-  tokenHash: string;
   expiresAt: number;
 }
 
@@ -16,7 +15,6 @@ export class AdminSessionManager {
     const token = `admin_${randomBytes(32).toString("base64url")}`;
     const tokenHash = hashToken(token);
     this.sessions.set(tokenHash, {
-      tokenHash,
       expiresAt: Date.now() + adminSessionTtlMs()
     });
     return token;
@@ -31,7 +29,7 @@ export class AdminSessionManager {
       this.sessions.delete(tokenHash);
       return false;
     }
-    return safeEqual(tokenHash, session.tokenHash);
+    return true;
   }
 
   revoke(token: string | undefined): void {
@@ -58,12 +56,6 @@ export function requireAdminSession(req: IncomingMessage, sessions?: AdminSessio
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
-}
-
-function safeEqual(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left, "hex");
-  const rightBuffer = Buffer.from(right, "hex");
-  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function adminSessionTtlMs(): number {
