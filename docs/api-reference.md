@@ -11,7 +11,8 @@ assume the default `http://127.0.0.1:3210`.
 ### Management API
 
 - `POST /api/vault/setup` and `POST /api/vault/unlock` are **unauthenticated**
-  but rate-limited per client IP (see [Security](./security.md)). On success
+  but rate-limited per client IP (see [Security](./security.md)). Setup is
+  additionally restricted to loopback network peers. On success
   they return the app state **plus an `adminToken`**.
 - Every other `/api/*` endpoint requires that token in a header:
 

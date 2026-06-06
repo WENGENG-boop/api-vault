@@ -44,6 +44,8 @@ token secrets. The plaintext file is written atomically (temp file + rename).
 
 ### Admin sessions (management API)
 
+- First-time setup is accepted only from a loopback network peer. Remote
+  clients cannot claim an uninitialized vault.
 - Setup/unlock issue an `admin_<random>` token (32 random bytes, base64url).
 - Only the SHA-256 hash is stored server-side, with a 12-hour TTL
   (`API_VAULT_ADMIN_SESSION_TTL_MS`). Validation uses a constant-time compare.

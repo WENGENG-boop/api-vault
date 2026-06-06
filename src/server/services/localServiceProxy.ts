@@ -14,11 +14,7 @@ import {
 import { buildUpstreamUrl, normalizeProxySuffixPath, shouldDropForwardedHeader } from "../../main/proxy";
 import type { VaultStore } from "../../main/store";
 import { extractRequestModel, extractUsageFromResponse } from "../../main/usage";
-
-function isLoopbackAddress(address: string | undefined): boolean {
-  if (!address) return false;
-  return address === "::1" || address === "::ffff:127.0.0.1" || address.startsWith("127.");
-}
+import { isLoopbackAddress } from "../utils/network";
 
 function isLocalProxyAllowed(req: IncomingMessage): boolean {
   if (process.env.API_VAULT_ALLOW_REMOTE_LOCAL_PROXY === "1") return true;

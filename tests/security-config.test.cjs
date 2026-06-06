@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { warnIfDockerAllowedHostsMissing } = require("../dist-main/server/startup.js");
+const { isSetupRequestAllowed } = require("../dist-main/server/routes/apiRoutes.js");
 
 test("Docker startup warns when remote Host allowlist is not configured", () => {
   const previousDocker = process.env.API_VAULT_DOCKER;
@@ -47,4 +48,10 @@ test("Docker startup does not warn when Host allowlist is configured", () => {
     if (previousHosts === undefined) delete process.env.API_VAULT_ALLOWED_HOSTS;
     else process.env.API_VAULT_ALLOWED_HOSTS = previousHosts;
   }
+});
+
+test("vault setup only accepts loopback network peers", () => {
+  assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "127.0.0.1" } }), true);
+  assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "::ffff:127.0.0.1" } }), true);
+  assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "192.168.1.50" } }), false);
 });

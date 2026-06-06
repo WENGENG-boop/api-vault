@@ -16,6 +16,7 @@ import { syncProviderModelCatalog } from "../services/modelCatalogService";
 import { testUpstreamUrl } from "../services/upstreamProbeService";
 import { getLocalToolUsage } from "../../main/localUsage/index.js";
 import { publicLockedAppState } from "../../shared/appState";
+import { isLoopbackAddress } from "../utils/network";
 
 export interface ApiRouteContext {
   store: VaultStore;
@@ -79,6 +80,13 @@ export async function handleApi(
   }
 
   if (method === "POST" && url.pathname === "/api/vault/setup") {
+    if (!isSetupRequestAllowed(req)) {
+      sendJson(res, 403, {
+        error: "Vault setup is restricted to loopback clients. Complete first-time setup on the API Vault host.",
+        code: "setup_loopback_required"
+      });
+      return;
+    }
     enforceAuthLimiter(req);
     try {
       const body = await readJsonBody<{ password: string }>(req);
@@ -451,6 +459,10 @@ export async function handleApi(
   }
 
   throw notFound("API route not found", "api_route_not_found");
+}
+
+export function isSetupRequestAllowed(req: Pick<IncomingMessage, "socket">): boolean {
+  return isLoopbackAddress(req.socket.remoteAddress);
 }
 
 async function testAccountPoolConnection(pool: AccountPoolForConnector) {
