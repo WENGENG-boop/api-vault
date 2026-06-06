@@ -162,7 +162,7 @@ export class ProxyServer {
       targetProtocol: concreteProtocol(effectiveProtocol)
     });
     if (isStreamRequest && prepared.targetProtocol === "openai-compatible") {
-      prepared = { ...prepared, body: injectStreamOptions(prepared.body, parsedBody) };
+      prepared = { ...prepared, body: injectStreamOptions(prepared.body) };
     }
     const finalBody = prepared.body;
     const normalizedSuffixPath = normalizeProxySuffixPath(provider.baseUrl, prepared.suffixPath);
@@ -792,9 +792,9 @@ function maxProxyBodyBytes(): number {
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_BODY_LIMIT_BYTES;
 }
 
-function injectStreamOptions(body: Buffer, parsed?: Record<string, unknown>): Buffer {
+function injectStreamOptions(body: Buffer): Buffer {
   try {
-    const object = parsed ?? JSON.parse(body.toString("utf8")) as Record<string, unknown>;
+    const object = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
     if (!object.stream_options) {
       object.stream_options = { include_usage: true };
     }
@@ -830,7 +830,6 @@ export function shouldDropForwardedHeader(lower: string): boolean {
   if (lower.startsWith("proxy-")) return true;
   return false;
 }
-
 
 
 

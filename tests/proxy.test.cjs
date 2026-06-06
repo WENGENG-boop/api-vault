@@ -1,5 +1,7 @@
 ﻿const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   buildUpstreamHeaders,
   buildUpstreamUrl,
@@ -95,5 +97,10 @@ test("injects Anthropic-compatible auth header", () => {
   );
   assert.equal(headers.get("x-api-key"), "ak-real");
   assert.equal(headers.get("anthropic-version"), "2023-06-01");
+});
+
+test("provider streaming options preserve the prepared multimodal body", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "..", "src", "main", "proxy.ts"), "utf8");
+  assert.doesNotMatch(source, /injectStreamOptions\(prepared\.body,\s*parsedBody\)/);
 });
 
