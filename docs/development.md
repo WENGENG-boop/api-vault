@@ -28,7 +28,10 @@ npm run dev             # build, then serve
 npm run dev:renderer    # next dev against a separately running server
 npm run electron        # build, then launch Electron
 npm run pack:dir        # build an unpacked Electron app
-npm run pack:win        # build artifacts/electron/API Vault <version>.exe
+npm run pack:win        # Windows x64 portable .exe
+npm run pack:mac:x64    # macOS Intel .dmg
+npm run pack:mac:arm64  # macOS Apple Silicon .dmg
+npm run pack:linux      # Linux x64 .AppImage
 npm test                # build:main, then node --test tests/*.test.cjs
 npm start               # build, then serve
 ```
@@ -36,6 +39,13 @@ npm start               # build, then serve
 Electron packages include `dist-main/` inside the application archive and copy
 the static frontend to `resources/out/`. Packaged vault data is stored in
 Electron's per-user `userData` directory rather than beside the executable.
+Platform packages are copied to `artifacts/electron/<platform>-<arch>/`.
+Run each package command on its matching operating system.
+
+The `Electron Release` GitHub Actions workflow builds every platform when run
+manually. Pushing a tag such as `v0.1.0` also creates a GitHub Release and
+uploads all packages. Packages are currently unsigned, so Windows and macOS may
+show security warnings until code-signing credentials are configured.
 
 ## Typecheck
 

@@ -39,25 +39,52 @@ test("Electron entry configures packaged resources and user data before loading 
   assert.match(source, /import\("\.\.\/server\/config\/serverConfig\.js"\)/);
 });
 
-test("Electron package metadata can produce a Windows portable build", () => {
+test("Electron package metadata can produce all supported desktop artifacts", () => {
   const pkg = JSON.parse(read("package.json"));
 
-  assert.equal(pkg.scripts["pack:win"], "npm run build && node scripts/package-electron-win.mjs");
+  assert.equal(pkg.scripts["pack:win"], "npm run build && node scripts/package-electron.mjs win x64");
+  assert.equal(pkg.scripts["pack:mac:x64"], "npm run build && node scripts/package-electron.mjs mac x64");
+  assert.equal(pkg.scripts["pack:mac:arm64"], "npm run build && node scripts/package-electron.mjs mac arm64");
+  assert.equal(pkg.scripts["pack:linux"], "npm run build && node scripts/package-electron.mjs linux x64");
   assert.equal(pkg.build.appId, "com.apivault.desktop");
   assert.equal(pkg.build.productName, "API Vault");
+  assert.equal(pkg.build.artifactName, "${productName}-${version}-${os}-${arch}.${ext}");
   assert.equal(pkg.build.directories.output, "release-electron");
   assert.deepEqual(pkg.build.files, ["dist-main/**/*", "package.json"]);
   assert.deepEqual(pkg.build.extraResources, [{ from: "out", to: "out", filter: ["**/*"] }]);
   assert.deepEqual(pkg.build.win.target, ["portable"]);
   assert.equal(pkg.build.win.signAndEditExecutable, false);
+  assert.deepEqual(pkg.build.mac.target, ["dmg"]);
+  assert.equal(pkg.build.mac.identity, null);
+  assert.deepEqual(pkg.build.linux.target, ["AppImage"]);
 });
 
-test("Windows packaging uses a temporary build directory and copies back the portable artifact", () => {
-  const source = read("scripts", "package-electron-win.mjs");
+test("multi-platform packaging uses a temporary directory and separates artifacts by platform", () => {
+  const source = read("scripts", "package-electron.mjs");
 
   assert.match(source, /tmpdir\(\)/);
   assert.match(source, /--config\.directories\.output=/);
   assert.match(source, /artifacts[\\/]electron/);
+  assert.match(source, /portable/);
+  assert.match(source, /dmg/);
+  assert.match(source, /AppImage/);
+  assert.match(source, /x64/);
+  assert.match(source, /arm64/);
+});
+
+test("GitHub Actions builds every Electron target and releases v tags", () => {
+  const workflow = read(".github", "workflows", "electron-release.yml");
+
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /tags:\s*\n\s*- "v\*"/);
+  assert.match(workflow, /windows-latest/);
+  assert.match(workflow, /macos-latest/);
+  assert.match(workflow, /ubuntu-latest/);
+  assert.match(workflow, /pack:win/);
+  assert.match(workflow, /pack:mac:x64/);
+  assert.match(workflow, /pack:mac:arm64/);
+  assert.match(workflow, /pack:linux/);
+  assert.match(workflow, /softprops\/action-gh-release@v2/);
 });
 
 test("Electron only shuts down its owned backend when the app quits", () => {

@@ -14,7 +14,10 @@
     "serve": "node dist-main/server/server.js",
     "electron": "npm run build && electron .",
     "pack:dir": "npm run build && electron-builder --dir",
-    "pack:win": "npm run build && node scripts/package-electron-win.mjs",
+    "pack:win": "npm run build && node scripts/package-electron.mjs win x64",
+    "pack:mac:x64": "npm run build && node scripts/package-electron.mjs mac x64",
+    "pack:mac:arm64": "npm run build && node scripts/package-electron.mjs mac arm64",
+    "pack:linux": "npm run build && node scripts/package-electron.mjs linux x64",
     "start": "npm run build && node dist-main/server/server.js",
     "test": "npm run build:main && node --test tests/*.test.cjs"
   },
@@ -34,6 +37,7 @@
   "build": {
     "appId": "com.apivault.desktop",
     "productName": "API Vault",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "asar": true,
     "directories": {
       "output": "release-electron"
@@ -55,6 +59,19 @@
       "signAndEditExecutable": false,
       "target": [
         "portable"
+      ]
+    },
+    "mac": {
+      "identity": null,
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "category": "Development",
+      "target": [
+        "AppImage"
       ]
     }
   }
