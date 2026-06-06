@@ -12,7 +12,8 @@ assume the default `http://127.0.0.1:3210`.
 
 - `POST /api/vault/setup` and `POST /api/vault/unlock` are **unauthenticated**
   but rate-limited per client IP (see [Security](./security.md)). Setup is
-  additionally restricted to loopback network peers. On success
+  additionally restricted to loopback network peers unless the request sends
+  the startup token in `x-api-vault-bootstrap`. On success
   they return the app state **plus an `adminToken`**.
 - Every other `/api/*` endpoint requires that token in a header:
 
@@ -41,7 +42,7 @@ assume the default `http://127.0.0.1:3210`.
 | Method | Path | Auth | Body | Notes |
 |--------|------|------|------|-------|
 | `GET` | `/api/state` | optional | — | Full state with admin token, else public state. |
-| `POST` | `/api/vault/setup` | rate-limited | `{ password }` | Initialize a new vault. Returns `adminToken`. |
+| `POST` | `/api/vault/setup` | rate-limited; loopback or bootstrap header | `{ password }` | Initialize a new vault. Returns `adminToken`. |
 | `POST` | `/api/vault/unlock` | rate-limited | `{ password }` | Unlock. Returns `adminToken`. |
 | `POST` | `/api/vault/lock` | admin | — | Lock the vault and revoke the session. |
 

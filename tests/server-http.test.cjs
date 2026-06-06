@@ -5,6 +5,7 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { createApiServer } = require("../dist-main/server/server.js");
+const { handleApi } = require("../dist-main/server/routes/apiRoutes.js");
 const { ProxyServer } = require("../dist-main/main/proxy.js");
 const { VaultStore } = require("../dist-main/main/store.js");
 const { resetAuthLimiter } = require("../dist-main/server/middlewares/authLimiter.js");
@@ -62,6 +63,45 @@ async function requestJson(baseUrl, route, options = {}) {
     data
   };
 }
+
+test("remote vault setup requires the startup bootstrap token", async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "api-vault-bootstrap-"));
+  const store = new VaultStore(path.join(tempDir, "vault.json"));
+  const bootstrapToken = "bootstrap-test-secret";
+  const api = http.createServer((req, res) => {
+    Object.defineProperty(req.socket, "remoteAddress", { value: "192.168.1.50" });
+    const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
+    handleApi(req, res, url, { store, setupBootstrapToken: bootstrapToken }).catch((error) => {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: error.message }));
+    });
+  });
+  const apiPort = await listen(api);
+  const apiBase = `http://127.0.0.1:${apiPort}`;
+
+  try {
+    let result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 403);
+    assert.equal(result.data.code, "setup_loopback_required");
+
+    result = await requestJson(apiBase, "/api/vault/setup", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-vault-bootstrap": bootstrapToken
+      },
+      body: { password: "test-password-123" }
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.data.initialized, true);
+  } finally {
+    await close(api);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
 
 test("HTTP API manages vault, providers, proxy usage, and billing sync", async () => {
   const upstreamHits = [];
@@ -1711,5 +1751,4 @@ test("local service proxy strips management and client credentials before inject
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
-
 

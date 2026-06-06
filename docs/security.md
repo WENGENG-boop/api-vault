@@ -44,11 +44,13 @@ token secrets. The plaintext file is written atomically (temp file + rename).
 
 ### Admin sessions (management API)
 
-- First-time setup is accepted only from a loopback network peer. Remote
-  clients cannot claim an uninitialized vault.
+- First-time setup is accepted directly from a loopback network peer. Remote
+  setup requires the random one-time bootstrap token printed at startup, so a
+  network client cannot claim an uninitialized vault without console access.
 - Setup/unlock issue an `admin_<random>` token (32 random bytes, base64url).
 - Only the SHA-256 hash is stored server-side, with a 12-hour TTL
-  (`API_VAULT_ADMIN_SESSION_TTL_MS`). Validation uses a constant-time compare.
+  (`API_VAULT_ADMIN_SESSION_TTL_MS`). Validation looks up that hash in the
+  process-local session map.
 - Lock revokes the current session.
 
 ### Proxy authentication
@@ -61,9 +63,11 @@ token secrets. The plaintext file is written atomically (temp file + rename).
 ## Brute-Force Protection
 
 `setup` and `unlock` are rate-limited to 12 attempts per minute **per client
-IP**. The limiter keys on the network peer address only — not the `Host`
-header, which is client-controlled and would otherwise let an attacker reset the
-counter at will. Successful unlocks do not consume the failure quota.
+IP**. By default the limiter keys on the network peer address only, not the
+client-controlled `Host` or forwarding headers. When a trusted final proxy
+overwrites or sanitizes `X-Forwarded-For`, set `API_VAULT_TRUST_PROXY=1` to use
+its rightmost non-empty value. Successful unlocks do not consume the failure
+quota.
 
 ## Header Hygiene on Proxying
 

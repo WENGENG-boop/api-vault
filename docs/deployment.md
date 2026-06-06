@@ -42,6 +42,11 @@ environment:
 Restart after changing it. When `API_VAULT_DOCKER=1` and this variable is
 unset, startup logs warn that remote requests will receive `403 Forbidden`.
 
+For first-time setup through the Docker-published port, read the
+`FIRST-TIME SETUP TOKEN` from `docker compose logs` and send it in the
+`x-api-vault-bootstrap` header. Loopback setup does not require this header.
+Only send the token over HTTPS or a trusted private network.
+
 ```bash
 docker compose logs -f      # logs
 docker compose down         # stop

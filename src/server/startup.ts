@@ -1,5 +1,6 @@
 import type { Server } from "node:http";
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import type { VaultStore } from "../main/store";
 import { DEFAULT_PORT, LISTEN_HOST } from "./config/serverConfig";
 
@@ -19,6 +20,10 @@ export function warnIfDockerAllowedHostsMissing(): void {
     "Only localhost Host headers are accepted, so remote requests will receive 403. " +
     "Set API_VAULT_ALLOWED_HOSTS to the exact IP addresses or hostnames clients use."
   );
+}
+
+export function createSetupBootstrapToken(): string {
+  return `bootstrap_${randomBytes(32).toString("base64url")}`;
 }
 
 export async function listenFixedPort(server: Server, port: number): Promise<number> {

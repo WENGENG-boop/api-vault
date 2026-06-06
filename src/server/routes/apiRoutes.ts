@@ -1,4 +1,5 @@
 ﻿import type { IncomingMessage, ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import type { AccountPoolInput, AddKeyInput, ApiKeyInput, AppState, CloudflaredApiResponse, CloudflaredConfig, LocalService, LocalServiceProtocol, ProviderInput, ProviderModelInput, ProxyTokenInput } from "../../shared/types";
 import { syncBalance } from "../../main/balance";
 import { CloudflaredManager } from "../../main/cloudflared";
@@ -22,6 +23,7 @@ export interface ApiRouteContext {
   store: VaultStore;
   cloudflared?: CloudflaredManager;
   adminSessions?: AdminSessionManager;
+  setupBootstrapToken?: string;
 }
 
 const API_ROUTES = {
@@ -52,7 +54,7 @@ export async function handleApi(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
-  { store, cloudflared, adminSessions }: ApiRouteContext
+  { store, cloudflared, adminSessions, setupBootstrapToken }: ApiRouteContext
 ) {
   const method = req.method?.toUpperCase() ?? "GET";
   const proxyPort = Number(url.port || DEFAULT_PORT);
@@ -80,9 +82,9 @@ export async function handleApi(
   }
 
   if (method === "POST" && url.pathname === "/api/vault/setup") {
-    if (!isSetupRequestAllowed(req)) {
+    if (!isSetupRequestAllowed(req, setupBootstrapToken)) {
       sendJson(res, 403, {
-        error: "Vault setup is restricted to loopback clients. Complete first-time setup on the API Vault host.",
+        error: "Remote vault setup requires the one-time bootstrap token printed in the API Vault startup log.",
         code: "setup_loopback_required"
       });
       return;
@@ -461,8 +463,21 @@ export async function handleApi(
   throw notFound("API route not found", "api_route_not_found");
 }
 
-export function isSetupRequestAllowed(req: Pick<IncomingMessage, "socket">): boolean {
-  return isLoopbackAddress(req.socket.remoteAddress);
+export function isSetupRequestAllowed(
+  req: Pick<IncomingMessage, "headers" | "socket">,
+  setupBootstrapToken?: string
+): boolean {
+  if (isLoopbackAddress(req.socket.remoteAddress)) return true;
+  const header = req.headers["x-api-vault-bootstrap"];
+  const supplied = Array.isArray(header) ? header[0] : header;
+  return secureTokenMatches(supplied?.trim(), setupBootstrapToken);
+}
+
+function secureTokenMatches(supplied: string | undefined, expected: string | undefined): boolean {
+  if (!supplied || !expected) return false;
+  const suppliedBuffer = Buffer.from(supplied, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  return suppliedBuffer.length === expectedBuffer.length && timingSafeEqual(suppliedBuffer, expectedBuffer);
 }
 
 async function testAccountPoolConnection(pool: AccountPoolForConnector) {

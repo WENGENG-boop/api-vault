@@ -10,12 +10,13 @@ import { serveStatic } from "./utils/staticAssets";
 import { startAutoSync } from "./services/autoSyncService";
 import { handleLocalServiceProxy } from "./services/localServiceProxy";
 import { handleApi } from "./routes/apiRoutes";
-import { isApiVaultRunning, listenFixedPort, localAppUrl, openBrowser, warnIfDockerAllowedHostsMissing, warnIfPublicBindIsRisky } from "./startup";
+import { createSetupBootstrapToken, isApiVaultRunning, listenFixedPort, localAppUrl, openBrowser, warnIfDockerAllowedHostsMissing, warnIfPublicBindIsRisky } from "./startup";
 export interface LocalServerContext {
   store: VaultStore;
   proxy: ProxyServer;
   cloudflared?: CloudflaredManager;
   adminSessions?: AdminSessionManager;
+  setupBootstrapToken?: string;
 }
 
 export function createApiServer(context: LocalServerContext) {
@@ -69,9 +70,14 @@ if (require.main === module) {
   const proxy = new ProxyServer(store);
   const cloudflared = new CloudflaredManager();
   const adminSessions = new AdminSessionManager();
-  const server = createApiServer({ store, proxy, cloudflared, adminSessions });
+  const setupBootstrapToken = store.status.initialized ? undefined : createSetupBootstrapToken();
+  const server = createApiServer({ store, proxy, cloudflared, adminSessions, setupBootstrapToken });
 
   const stopAutoSync = startAutoSync(store);
+  if (setupBootstrapToken) {
+    console.warn(`FIRST-TIME SETUP TOKEN: ${setupBootstrapToken}`);
+    console.warn("Remote setup must send this value in the x-api-vault-bootstrap header.");
+  }
   warnIfDockerAllowedHostsMissing();
   warnIfPublicBindIsRisky(store);
 

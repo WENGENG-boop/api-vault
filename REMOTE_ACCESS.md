@@ -76,6 +76,12 @@ Use the exact IP/hostname and port clients send. In Docker, add the same
 variable under `environment` in `docker-compose.yml`; otherwise remote requests
 receive `403 Forbidden` even though `3210` is published.
 
+When the vault is uninitialized, startup logs print a random
+`FIRST-TIME SETUP TOKEN`. Non-loopback `POST /api/vault/setup` requests must
+send it as `x-api-vault-bootstrap`. The token only authorizes setup and becomes
+unusable as soon as the vault has been initialized. Only send it over HTTPS or
+a trusted private network.
+
 ## Recommended Exposure Options
 
 ### Tailscale

@@ -6,7 +6,7 @@ export function applyCors(req: IncomingMessage, res: ServerResponse): boolean {
   if (origin && isAllowedOrigin(origin, req.headers.host)) {
     res.setHeader("access-control-allow-origin", origin);
     res.setHeader("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-    res.setHeader("access-control-allow-headers", "content-type, x-api-vault-admin, authorization");
+    res.setHeader("access-control-allow-headers", "content-type, x-api-vault-admin, x-api-vault-bootstrap, authorization");
   }
 
   if (req.method !== "OPTIONS") return false;

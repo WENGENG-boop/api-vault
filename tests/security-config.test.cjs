@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { warnIfDockerAllowedHostsMissing } = require("../dist-main/server/startup.js");
+const { createSetupBootstrapToken, warnIfDockerAllowedHostsMissing } = require("../dist-main/server/startup.js");
 const { isSetupRequestAllowed } = require("../dist-main/server/routes/apiRoutes.js");
 const { authLimiterKey } = require("../dist-main/server/middlewares/authLimiter.js");
 
@@ -54,9 +54,25 @@ test("Docker startup does not warn when Host allowlist is configured", () => {
 });
 
 test("vault setup only accepts loopback network peers", () => {
-  assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "127.0.0.1" } }), true);
-  assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "::ffff:127.0.0.1" } }), true);
-  assert.equal(isSetupRequestAllowed({ socket: { remoteAddress: "192.168.1.50" } }), false);
+  assert.equal(isSetupRequestAllowed({ headers: {}, socket: { remoteAddress: "127.0.0.1" } }), true);
+  assert.equal(isSetupRequestAllowed({ headers: {}, socket: { remoteAddress: "::ffff:127.0.0.1" } }), true);
+  assert.equal(isSetupRequestAllowed({ headers: {}, socket: { remoteAddress: "192.168.1.50" } }), false);
+});
+
+test("non-loopback vault setup requires the matching bootstrap token", () => {
+  const request = {
+    headers: { "x-api-vault-bootstrap": "bootstrap-secret" },
+    socket: { remoteAddress: "192.168.1.50" }
+  };
+  assert.equal(isSetupRequestAllowed(request, "bootstrap-secret"), true);
+  assert.equal(isSetupRequestAllowed(request, "different-secret"), false);
+});
+
+test("setup bootstrap tokens are random and carry a recognizable prefix", () => {
+  const first = createSetupBootstrapToken();
+  const second = createSetupBootstrapToken();
+  assert.match(first, /^bootstrap_[A-Za-z0-9_-]{43}$/);
+  assert.notEqual(first, second);
 });
 
 test("auth limiter ignores forwarded addresses unless proxy trust is explicit", () => {
