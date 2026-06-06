@@ -87,6 +87,7 @@ test("GitHub Actions builds every Electron target and releases v tags", () => {
   assert.match(workflow, /pack:linux/);
   assert.match(workflow, /actions\/checkout@v5/);
   assert.match(workflow, /actions\/setup-node@v5/);
+  assert.match(workflow, /FORCE_JAVASCRIPT_ACTIONS_TO_NODE24:\s*true/);
   assert.match(workflow, /softprops\/action-gh-release@v2/);
 });
 
